@@ -6,13 +6,18 @@ const FURNITURE_TYPES: FurnitureType[] = ['bed', 'sofa', 'table', 'plant'];
 
 interface FurniturePaletteProps {
   onDragStart: (type: FurnitureType) => void;
+  onDragEnd: () => void;
 }
 
-export const FurniturePalette = ({ onDragStart }: FurniturePaletteProps) => {
+export const FurniturePalette = ({ onDragStart, onDragEnd }: FurniturePaletteProps) => {
   const handleDragStart = (e: React.DragEvent, type: FurnitureType) => {
     e.dataTransfer.setData('furniture-type', type);
     e.dataTransfer.effectAllowed = 'copy';
     onDragStart(type);
+  };
+
+  const handleDragEnd = () => {
+    onDragEnd();
   };
 
   return (
@@ -29,6 +34,7 @@ export const FurniturePalette = ({ onDragStart }: FurniturePaletteProps) => {
               key={type}
               draggable
               onDragStart={(e) => handleDragStart(e, type)}
+              onDragEnd={handleDragEnd}
               className="group flex flex-col items-center justify-center p-4 rounded-xl bg-stone-50 border border-stone-100 cursor-grab active:cursor-grabbing transition-all duration-200 hover:bg-amber-50 hover:border-amber-200 hover:shadow-md hover:-translate-y-0.5"
             >
               <div className="transition-transform duration-200 group-hover:scale-110">

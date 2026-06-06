@@ -78,7 +78,10 @@ export default function Home() {
 
         <div className="flex gap-6">
           <aside className="w-[240px] flex-shrink-0">
-            <FurniturePalette onDragStart={setPaletteDrag} />
+            <FurniturePalette 
+              onDragStart={setPaletteDrag} 
+              onDragEnd={() => setPaletteDrag(null)} 
+            />
           </aside>
 
           <main className="flex-1 flex flex-col items-center gap-5">
