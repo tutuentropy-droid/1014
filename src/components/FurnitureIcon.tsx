@@ -4,9 +4,23 @@ interface FurnitureIconProps {
   type: FurnitureType;
   size?: number;
   color?: string;
+  iconUrl?: string;
 }
 
-export const FurnitureIcon = ({ type, size = 48, color = '#5c4a3d' }: FurnitureIconProps) => {
+export const FurnitureIcon = ({ type, size = 48, color = '#5c4a3d', iconUrl }: FurnitureIconProps) => {
+  if (iconUrl) {
+    return (
+      <img
+        src={iconUrl}
+        alt={String(type)}
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+        draggable={false}
+      />
+    );
+  }
+
   switch (type) {
     case 'bed':
       return (
@@ -44,6 +58,10 @@ export const FurnitureIcon = ({ type, size = 48, color = '#5c4a3d' }: FurnitureI
         </svg>
       );
     default:
-      return null;
+      return (
+        <svg width={size} height={size} viewBox="0 0 64 64" fill="none">
+          <rect x="10" y="10" width="44" height="44" rx="6" fill={color} opacity="0.85" />
+        </svg>
+      );
   }
 };

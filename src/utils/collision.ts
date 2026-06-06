@@ -1,4 +1,4 @@
-import type { FurnitureItem } from '@/types/furniture';
+import type { FurnitureItem, WallItem } from '@/types/furniture';
 
 export const aabbOverlap = (
   a: { x: number; y: number; width: number; height: number },
@@ -10,6 +10,7 @@ export const aabbOverlap = (
 export const canPlaceAt = (
   candidate: { x: number; y: number; width: number; height: number },
   allItems: FurnitureItem[],
+  walls: WallItem[] = [],
   ignoreId?: string,
   roomWidth = 800,
   roomHeight = 600
@@ -20,6 +21,9 @@ export const canPlaceAt = (
   for (const item of allItems) {
     if (ignoreId && item.id === ignoreId) continue;
     if (aabbOverlap(candidate, item)) return false;
+  }
+  for (const wall of walls) {
+    if (aabbOverlap(candidate, wall)) return false;
   }
   return true;
 };

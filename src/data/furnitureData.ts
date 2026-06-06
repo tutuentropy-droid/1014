@@ -1,19 +1,23 @@
-import type { FurnitureType } from '@/types/furniture';
+import type { DefaultFurnitureType, CustomFurnitureCatalogEntry } from '@/types/furniture';
 
-export const ROOM_WIDTH = 800;
-export const ROOM_HEIGHT = 600;
 export const GRID_SIZE = 40;
 
+export const DEFAULT_ROOM_WIDTH_GRIDS = 20;
+export const DEFAULT_ROOM_HEIGHT_GRIDS = 15;
+export const MIN_ROOM_GRIDS = 8;
+export const MAX_ROOM_GRIDS = 30;
+
+export const DEFAULT_FURNITURE_WIDTH_GRIDS = 2;
+export const DEFAULT_FURNITURE_HEIGHT_GRIDS = 2;
+export const MIN_FURNITURE_GRIDS = 1;
+export const MAX_FURNITURE_GRIDS = 3;
+
+export const computeRoomWidth = (grids: number) => grids * GRID_SIZE;
+export const computeRoomHeight = (grids: number) => grids * GRID_SIZE;
+
 export const FURNITURE_CATALOG: Record<
-  FurnitureType,
-  {
-    label: string;
-    width: number;
-    height: number;
-    color: string;
-    color3D: number;
-    depth: number;
-  }
+  DefaultFurnitureType,
+  CustomFurnitureCatalogEntry
 > = {
   bed: {
     label: '床',
@@ -48,3 +52,5 @@ export const FURNITURE_CATALOG: Record<
     depth: 90,
   },
 };
+
+export const DEFAULT_FURNITURE_TYPES: DefaultFurnitureType[] = ['bed', 'sofa', 'table', 'plant'];
