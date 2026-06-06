@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -8,6 +8,10 @@ import type { FurnitureItem, WallItem } from '@/types/furniture';
 const SCALE = 0.01;
 const WALL_HEIGHT = 2.5;
 const WALL_3D_THICKNESS = 0.08;
+const PLAYER_HEIGHT = 1.7;
+const PLAYER_RADIUS = 0.3;
+const MOVE_SPEED = 3;
+const MOUSE_SENSITIVITY = 0.002;
 
 const hexToThreeColor = (hex: string): number => {
   try {
@@ -218,7 +222,11 @@ const createFallbackMesh = (w: number, d: number, h: number, color: number) => {
   return g;
 };
 
-export const RoomView3D = () => {
+interface RoomView3DProps {
+  onScreenshotReady?: (dataUrl: string) => void;
+}
+
+export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -226,8 +234,7 @@ export const RoomView3D = () => {
   const controlsRef = useRef<OrbitControls | null>(null);
   const floorRef = useRef<THREE.Mesh | null>(null);
   const gridHelperRef = useRef<THREE.GridHelper | null>(null);
-  const backWallRef = useRef<THREE.Mesh | null>(null);
-  const leftWallRef = useRef<THREE.Mesh | null>(null);
+  const wallsGroupRef = useRef<THREE.Group | null>(null);
   const innerWallsGroupRef = useRef<THREE.Group | null>(null);
   const furnitureGroupRef = useRef<THREE.Group | null>(null);
   const furnitureMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
@@ -235,12 +242,84 @@ export const RoomView3D = () => {
   const frameRef = useRef<number>(0);
   const initializedRef = useRef(false);
 
+  const isFirstPersonRef = useRef(false);
+  const yawRef = useRef(0);
+  const pitchRef = useRef(0);
+  const playerPosRef = useRef(new THREE.Vector3(0, PLAYER_HEIGHT, 0));
+  const keysRef = useRef<Record<string, boolean>>({});
+  const defaultCameraPosRef = useRef(new THREE.Vector3());
+  const defaultCameraTargetRef = useRef(new THREE.Vector3());
+  const [isFirstPerson, setIsFirstPerson] = useState(false);
+
   const furniture = useDesignerStore((s) => s.furniture);
   const walls = useDesignerStore((s) => s.walls);
   const selectedId = useDesignerStore((s) => s.selectedId);
   const roomWidth = useDesignerStore((s) => s.getRoomWidth());
   const roomHeight = useDesignerStore((s) => s.getRoomHeight());
   const getCatalogEntry = useDesignerStore((s) => s.getCatalogEntry);
+
+  const captureScreenshot = useCallback(() => {
+    const renderer = rendererRef.current;
+    const scene = sceneRef.current;
+    const camera = cameraRef.current;
+    if (!renderer || !scene || !camera) return;
+    renderer.render(scene, camera);
+    const dataUrl = renderer.domElement.toDataURL('image/png');
+    if (onScreenshotReady) {
+      onScreenshotReady(dataUrl);
+    }
+    return dataUrl;
+  }, [onScreenshotReady]);
+
+  (window as unknown as { capture3DScreenshot?: () => string | undefined }).capture3DScreenshot =
+    captureScreenshot;
+
+  const checkCollision = useCallback(
+    (pos: THREE.Vector3): boolean => {
+      const ROOM_W = roomWidth * SCALE;
+      const ROOM_H = roomHeight * SCALE;
+
+      if (
+        pos.x - PLAYER_RADIUS < WALL_3D_THICKNESS ||
+        pos.x + PLAYER_RADIUS > ROOM_W - WALL_3D_THICKNESS ||
+        pos.z - PLAYER_RADIUS < WALL_3D_THICKNESS ||
+        pos.z + PLAYER_RADIUS > ROOM_H - WALL_3D_THICKNESS
+      ) {
+        return true;
+      }
+
+      for (const wall of walls) {
+        const wx = wall.x * SCALE;
+        const wy = wall.y * SCALE;
+        const ww = wall.width * SCALE;
+        const wh = wall.height * SCALE;
+        const closestX = Math.max(wx, Math.min(pos.x, wx + ww));
+        const closestZ = Math.max(wy, Math.min(pos.z, wy + wh));
+        const dx = pos.x - closestX;
+        const dz = pos.z - closestZ;
+        if (dx * dx + dz * dz < PLAYER_RADIUS * PLAYER_RADIUS) {
+          return true;
+        }
+      }
+
+      for (const item of furniture) {
+        const ix = item.x * SCALE;
+        const iy = item.y * SCALE;
+        const iw = item.width * SCALE;
+        const ih = item.height * SCALE;
+        const closestX = Math.max(ix, Math.min(pos.x, ix + iw));
+        const closestZ = Math.max(iy, Math.min(pos.z, iy + ih));
+        const dx = pos.x - closestX;
+        const dz = pos.z - closestZ;
+        if (dx * dx + dz * dz < PLAYER_RADIUS * PLAYER_RADIUS) {
+          return true;
+        }
+      }
+
+      return false;
+    },
+    [furniture, walls, roomWidth, roomHeight]
+  );
 
   const updateFurnitureMesh = useCallback(
     (item: FurnitureItem) => {
@@ -345,6 +424,67 @@ export const RoomView3D = () => {
     [getCatalogEntry]
   );
 
+  const buildRoomWalls = useCallback(() => {
+    const scene = sceneRef.current;
+    const wallsGroup = wallsGroupRef.current;
+    if (!scene || !wallsGroup) return;
+
+    while (wallsGroup.children.length > 0) {
+      const child = wallsGroup.children[0];
+      wallsGroup.remove(child);
+      if (child instanceof THREE.Mesh) {
+        child.geometry.dispose();
+        const mat = child.material as THREE.Material | THREE.Material[];
+        if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+        else mat.dispose();
+      }
+    }
+
+    const ROOM_W = roomWidth * SCALE;
+    const ROOM_H = roomHeight * SCALE;
+
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0xd1d5db,
+      roughness: 0.85,
+      metalness: 0.02,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide,
+    });
+
+    const backWall = new THREE.Mesh(
+      new THREE.BoxGeometry(ROOM_W, WALL_HEIGHT, WALL_3D_THICKNESS),
+      wallMat
+    );
+    backWall.position.set(ROOM_W / 2, WALL_HEIGHT / 2, 0);
+    backWall.receiveShadow = true;
+    wallsGroup.add(backWall);
+
+    const frontWall = new THREE.Mesh(
+      new THREE.BoxGeometry(ROOM_W, WALL_HEIGHT, WALL_3D_THICKNESS),
+      wallMat
+    );
+    frontWall.position.set(ROOM_W / 2, WALL_HEIGHT / 2, ROOM_H);
+    frontWall.receiveShadow = true;
+    wallsGroup.add(frontWall);
+
+    const leftWall = new THREE.Mesh(
+      new THREE.BoxGeometry(WALL_3D_THICKNESS, WALL_HEIGHT, ROOM_H),
+      wallMat
+    );
+    leftWall.position.set(0, WALL_HEIGHT / 2, ROOM_H / 2);
+    leftWall.receiveShadow = true;
+    wallsGroup.add(leftWall);
+
+    const rightWall = new THREE.Mesh(
+      new THREE.BoxGeometry(WALL_3D_THICKNESS, WALL_HEIGHT, ROOM_H),
+      wallMat
+    );
+    rightWall.position.set(ROOM_W, WALL_HEIGHT / 2, ROOM_H / 2);
+    rightWall.receiveShadow = true;
+    wallsGroup.add(rightWall);
+  }, [roomWidth, roomHeight]);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -362,7 +502,7 @@ export const RoomView3D = () => {
     );
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
@@ -400,9 +540,9 @@ export const RoomView3D = () => {
     scene.add(dir);
 
     const floorMat = new THREE.MeshStandardMaterial({
-      color: 0xe8dcc4,
-      roughness: 0.85,
-      metalness: 0.05,
+      color: 0xb5a58a,
+      roughness: 0.35,
+      metalness: 0.65,
     });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), floorMat);
     floor.rotation.x = -Math.PI / 2;
@@ -416,22 +556,9 @@ export const RoomView3D = () => {
     scene.add(gridHelper);
     gridHelperRef.current = gridHelper;
 
-    const wallMat = new THREE.MeshStandardMaterial({
-      color: 0xf7f0e4,
-      roughness: 0.9,
-      side: THREE.DoubleSide,
-    });
-
-    const backWall = new THREE.Mesh(new THREE.PlaneGeometry(1, WALL_HEIGHT), wallMat);
-    backWall.receiveShadow = true;
-    scene.add(backWall);
-    backWallRef.current = backWall;
-
-    const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(1, WALL_HEIGHT), wallMat);
-    leftWall.rotation.y = Math.PI / 2;
-    leftWall.receiveShadow = true;
-    scene.add(leftWall);
-    leftWallRef.current = leftWall;
+    const wallsGroup = new THREE.Group();
+    scene.add(wallsGroup);
+    wallsGroupRef.current = wallsGroup;
 
     const innerWallsGroup = new THREE.Group();
     scene.add(innerWallsGroup);
@@ -443,9 +570,54 @@ export const RoomView3D = () => {
 
     gltfLoaderRef.current = new GLTFLoader();
 
+    let lastTime = performance.now();
+
     const animate = () => {
       frameRef.current = requestAnimationFrame(animate);
-      controls.update();
+      const now = performance.now();
+      const delta = (now - lastTime) / 1000;
+      lastTime = now;
+
+      if (isFirstPersonRef.current && camera) {
+        const forward = new THREE.Vector3(-Math.sin(yawRef.current), 0, -Math.cos(yawRef.current));
+        const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+        const move = new THREE.Vector3();
+        if (keysRef.current['KeyW'] || keysRef.current['ArrowUp']) move.add(forward);
+        if (keysRef.current['KeyS'] || keysRef.current['ArrowDown']) move.sub(forward);
+        if (keysRef.current['KeyD'] || keysRef.current['ArrowRight']) move.add(right);
+        if (keysRef.current['KeyA'] || keysRef.current['ArrowLeft']) move.sub(right);
+
+        if (move.lengthSq() > 0) {
+          move.normalize().multiplyScalar(MOVE_SPEED * delta);
+          const newPos = playerPosRef.current.clone().add(move);
+          if (!checkCollision(newPos)) {
+            playerPosRef.current.copy(newPos);
+          } else {
+            const tryX = playerPosRef.current.clone();
+            tryX.x = newPos.x;
+            if (!checkCollision(tryX)) {
+              playerPosRef.current.x = newPos.x;
+            }
+            const tryZ = playerPosRef.current.clone();
+            tryZ.z = newPos.z;
+            if (!checkCollision(tryZ)) {
+              playerPosRef.current.z = newPos.z;
+            }
+          }
+        }
+
+        camera.position.copy(playerPosRef.current);
+        const lookDir = new THREE.Vector3(
+          -Math.sin(yawRef.current) * Math.cos(pitchRef.current),
+          Math.sin(pitchRef.current),
+          -Math.cos(yawRef.current) * Math.cos(pitchRef.current)
+        );
+        camera.lookAt(camera.position.clone().add(lookDir));
+      } else if (controls) {
+        controls.update();
+      }
+
       renderer.render(scene, camera);
     };
     animate();
@@ -460,11 +632,73 @@ export const RoomView3D = () => {
     };
     window.addEventListener('resize', handleResize);
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      keysRef.current[e.code] = true;
+      if (e.code === 'KeyF' && document.pointerLockElement !== renderer.domElement) {
+        if (!isFirstPersonRef.current) {
+          const ROOM_W = roomWidth * SCALE;
+          const ROOM_H = roomHeight * SCALE;
+          playerPosRef.current.set(ROOM_W / 2, PLAYER_HEIGHT, ROOM_H / 2);
+          yawRef.current = 0;
+          pitchRef.current = 0;
+          if (controls) {
+            defaultCameraPosRef.current.copy(camera.position);
+            defaultCameraTargetRef.current.copy(controls.target);
+          }
+          controls.enabled = false;
+          isFirstPersonRef.current = true;
+          setIsFirstPerson(true);
+          renderer.domElement.requestPointerLock();
+        } else {
+          controls.enabled = true;
+          isFirstPersonRef.current = false;
+          setIsFirstPerson(false);
+          if (document.pointerLockElement) {
+            document.exitPointerLock();
+          }
+          camera.position.copy(defaultCameraPosRef.current);
+          controls.target.copy(defaultCameraTargetRef.current);
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      keysRef.current[e.code] = false;
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isFirstPersonRef.current) return;
+      if (document.pointerLockElement !== renderer.domElement) return;
+      yawRef.current -= e.movementX * MOUSE_SENSITIVITY;
+      pitchRef.current -= e.movementY * MOUSE_SENSITIVITY;
+      const maxPitch = Math.PI / 2 - 0.01;
+      pitchRef.current = Math.max(-maxPitch, Math.min(maxPitch, pitchRef.current));
+    };
+
+    const handlePointerLockChange = () => {
+      if (isFirstPersonRef.current && document.pointerLockElement !== renderer.domElement) {
+        controls.enabled = true;
+        isFirstPersonRef.current = false;
+        setIsFirstPerson(false);
+        camera.position.copy(defaultCameraPosRef.current);
+        controls.target.copy(defaultCameraTargetRef.current);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('pointerlockchange', handlePointerLockChange);
+
     initializedRef.current = true;
 
     return () => {
       initializedRef.current = false;
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('pointerlockchange', handlePointerLockChange);
       cancelAnimationFrame(frameRef.current);
       controls.dispose();
       renderer.dispose();
@@ -480,7 +714,7 @@ export const RoomView3D = () => {
         }
       });
     };
-  }, []);
+  }, [checkCollision, roomWidth, roomHeight]);
 
   useEffect(() => {
     if (!initializedRef.current) return;
@@ -491,14 +725,14 @@ export const RoomView3D = () => {
     const controls = controlsRef.current;
     const floor = floorRef.current;
     const gridHelper = gridHelperRef.current;
-    const backWall = backWallRef.current;
-    const leftWall = leftWallRef.current;
 
     if (camera) {
       camera.position.set(ROOM_W * 0.8, 5, ROOM_H * 1.1);
+      defaultCameraPosRef.current.copy(camera.position);
     }
     if (controls) {
       controls.target.set(ROOM_W / 2, 0, ROOM_H / 2);
+      defaultCameraTargetRef.current.copy(controls.target);
     }
     if (floor) {
       floor.geometry.dispose();
@@ -516,17 +750,9 @@ export const RoomView3D = () => {
       sceneRef.current?.add(newGrid);
       gridHelperRef.current = newGrid;
     }
-    if (backWall) {
-      backWall.geometry.dispose();
-      backWall.geometry = new THREE.PlaneGeometry(ROOM_W, WALL_HEIGHT);
-      backWall.position.set(ROOM_W / 2, WALL_HEIGHT / 2, 0);
-    }
-    if (leftWall) {
-      leftWall.geometry.dispose();
-      leftWall.geometry = new THREE.PlaneGeometry(ROOM_H, WALL_HEIGHT);
-      leftWall.position.set(0, WALL_HEIGHT / 2, ROOM_H / 2);
-    }
-  }, [roomWidth, roomHeight]);
+
+    buildRoomWalls();
+  }, [roomWidth, roomHeight, buildRoomWalls]);
 
   useEffect(() => {
     const group = innerWallsGroupRef.current;
@@ -625,8 +851,20 @@ export const RoomView3D = () => {
       className="relative rounded-2xl shadow-[0_8px_40px_rgba(92,74,61,0.12)] border-2 border-stone-200 overflow-hidden"
       style={{ width: roomWidth, height: roomHeight }}
     >
-      <div className="absolute top-3 left-3 z-10 px-2.5 py-1 bg-white/80 backdrop-blur rounded-md text-[10px] text-stone-500 font-mono border border-stone-200">
-        3D 视图 · 拖拽旋转 / 滚轮缩放
+      <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
+        <div className="px-2.5 py-1 bg-white/80 backdrop-blur rounded-md text-[10px] text-stone-500 font-mono border border-stone-200">
+          3D 视图 · 拖拽旋转 / 滚轮缩放
+        </div>
+        {isFirstPerson && (
+          <div className="px-2.5 py-1 bg-emerald-500/90 text-white rounded-md text-[10px] font-medium backdrop-blur">
+            第一人称 · WASD 移动 · 鼠标视角 · 再按 F 退出
+          </div>
+        )}
+        {!isFirstPerson && (
+          <div className="px-2.5 py-1 bg-sky-500/90 text-white rounded-md text-[10px] font-medium backdrop-blur">
+            按 F 进入第一人称漫游
+          </div>
+        )}
       </div>
     </div>
   );

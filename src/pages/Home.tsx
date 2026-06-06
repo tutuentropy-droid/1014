@@ -11,6 +11,8 @@ import {
   Palette,
   Tag,
   Maximize2,
+  Image,
+  Camera,
 } from 'lucide-react';
 import { FurniturePalette } from '@/components/FurniturePalette';
 import { RoomView2D } from '@/components/RoomView2D';
@@ -67,6 +69,38 @@ export default function Home() {
   const handleSave = () => {
     saveLayout();
     showToast(`✓ 布局已保存（${furniture.length} 件家具，${walls.length} 面墙）`);
+  };
+
+  const handleExport2D = () => {
+    const capture = (window as unknown as { capture2DLayout?: () => string | undefined }).capture2DLayout;
+    if (capture) {
+      const dataUrl = capture();
+      if (dataUrl) {
+        const link = document.createElement('a');
+        link.download = `room-layout-2d-${Date.now()}.png`;
+        link.href = dataUrl;
+        link.click();
+        showToast('✓ 2D 布局图已导出');
+        return;
+      }
+    }
+    showToast('导出失败，请重试');
+  };
+
+  const handleExport3D = () => {
+    const capture = (window as unknown as { capture3DScreenshot?: () => string | undefined }).capture3DScreenshot;
+    if (capture) {
+      const dataUrl = capture();
+      if (dataUrl) {
+        const link = document.createElement('a');
+        link.download = `room-screenshot-3d-${Date.now()}.png`;
+        link.href = dataUrl;
+        link.click();
+        showToast('✓ 3D 截图已导出');
+        return;
+      }
+    }
+    showToast('导出失败，请重试');
   };
 
   const handleClear = () => {
@@ -256,6 +290,20 @@ export default function Home() {
               >
                 <Save className="w-4 h-4" />
                 保存布局
+              </button>
+              <button
+                onClick={handleExport2D}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-400 hover:to-sky-500 text-white rounded-xl font-medium shadow-lg shadow-sky-500/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+              >
+                <Image className="w-4 h-4" />
+                导出 2D 图
+              </button>
+              <button
+                onClick={handleExport3D}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-500 to-violet-600 hover:from-violet-400 hover:to-violet-500 text-white rounded-xl font-medium shadow-lg shadow-violet-500/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+              >
+                <Camera className="w-4 h-4" />
+                导出 3D 截图
               </button>
               <button
                 onClick={handleClear}
