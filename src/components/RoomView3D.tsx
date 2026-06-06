@@ -634,8 +634,9 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       keysRef.current[e.code] = true;
-      if (e.code === 'KeyF' && document.pointerLockElement !== renderer.domElement) {
+      if (e.code === 'KeyF') {
         if (!isFirstPersonRef.current) {
+          // 进入第一人称模式
           const ROOM_W = roomWidth * SCALE;
           const ROOM_H = roomHeight * SCALE;
           playerPosRef.current.set(ROOM_W / 2, PLAYER_HEIGHT, ROOM_H / 2);
@@ -650,6 +651,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
           setIsFirstPerson(true);
           renderer.domElement.requestPointerLock();
         } else {
+          // 退出第一人称模式
           controls.enabled = true;
           isFirstPersonRef.current = false;
           setIsFirstPerson(false);
