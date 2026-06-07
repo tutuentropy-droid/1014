@@ -12,6 +12,8 @@ import {
   Image,
   Camera,
   Wand2,
+  Square,
+  Blinds,
 } from 'lucide-react';
 import { FurniturePalette } from '@/components/FurniturePalette';
 import { RoomView2D } from '@/components/RoomView2D';
@@ -32,13 +34,24 @@ export default function Home() {
     getAllFurniture,
     getAutoWalls,
     selectedId,
+    selectedWindowId,
+    selectedCurtainId,
+    drawMode,
+    setDrawMode,
+    getAllWindows,
+    getAllCurtains,
     rooms,
     currentRoomId,
     saveLayout,
     clearAll,
     loadLayout,
     selectFurniture,
+    selectWindow,
+    selectCurtain,
     removeFurniture,
+    removeWindow,
+    removeCurtain,
+    toggleCurtain,
     updateFurnitureWidth,
     updateFurnitureHeight,
     updateFurnitureColor,
@@ -54,8 +67,12 @@ export default function Home() {
   const [showSmartLayoutDialog, setShowSmartLayoutDialog] = useState(false);
 
   const allFurniture = getAllFurniture();
+  const allWindows = getAllWindows();
+  const allCurtains = getAllCurtains();
   const autoWalls = getAutoWalls();
   const selectedFurniture = allFurniture.find((f) => f.id === selectedId) || null;
+  const selectedWindow = allWindows.find((w) => w.id === selectedWindowId) || null;
+  const selectedCurtain = allCurtains.find((c) => c.id === selectedCurtainId) || null;
 
   useEffect(() => {
     loadLayout();
@@ -154,29 +171,57 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 p-1 bg-white rounded-xl shadow-sm border border-stone-200">
-            <button
-              onClick={() => setViewMode('2d')}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                viewMode === '2d'
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-md shadow-amber-500/25'
-                  : 'text-stone-600 hover:bg-stone-50'
-              }`}
-            >
-              <LayoutGrid className="w-4 h-4" />
-              2D 俯视图
-            </button>
-            <button
-              onClick={() => setViewMode('3d')}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                viewMode === '3d'
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-md shadow-amber-500/25'
-                  : 'text-stone-600 hover:bg-stone-50'
-              }`}
-            >
-              <Box className="w-4 h-4" />
-              3D 视图
-            </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 p-1 bg-white rounded-xl shadow-sm border border-stone-200">
+              <button
+                onClick={() => setViewMode('2d')}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  viewMode === '2d'
+                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-md shadow-amber-500/25'
+                    : 'text-stone-600 hover:bg-stone-50'
+                }`}
+              >
+                <LayoutGrid className="w-4 h-4" />
+                2D 俯视图
+              </button>
+              <button
+                onClick={() => setViewMode('3d')}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  viewMode === '3d'
+                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-md shadow-amber-500/25'
+                    : 'text-stone-600 hover:bg-stone-50'
+                }`}
+              >
+                <Box className="w-4 h-4" />
+                3D 视图
+              </button>
+            </div>
+            {viewMode === '2d' && (
+              <div className="flex items-center gap-2 p-1 bg-white rounded-xl shadow-sm border border-stone-200">
+                <button
+                  onClick={() => setDrawMode(drawMode === 'window' ? 'none' : 'window')}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    drawMode === 'window'
+                      ? 'bg-gradient-to-r from-sky-500 to-sky-600 text-white shadow-md shadow-sky-500/25'
+                      : 'text-stone-600 hover:bg-stone-50'
+                  }`}
+                >
+                  <Square className="w-4 h-4" />
+                  添加窗户
+                </button>
+                <button
+                  onClick={() => setDrawMode(drawMode === 'curtain' ? 'none' : 'curtain')}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    drawMode === 'curtain'
+                      ? 'bg-gradient-to-r from-violet-500 to-violet-600 text-white shadow-md shadow-violet-500/25'
+                      : 'text-stone-600 hover:bg-stone-50'
+                  }`}
+                >
+                  <Blinds className="w-4 h-4" />
+                  添加窗帘
+                </button>
+              </div>
+            )}
           </div>
         </header>
 
@@ -289,149 +334,282 @@ export default function Home() {
                 {' · '}
                 <span className="font-semibold text-stone-800">{allFurniture.length}</span> 件家具
                 {' · '}
-                <span className="font-semibold text-sky-700">{autoWalls.length}</span> 面自动墙
+                <span className="font-semibold text-sky-700">{allWindows.length}</span> 个窗户
+                {' · '}
+                <span className="font-semibold text-violet-700">{allCurtains.length}</span> 个窗帘
+                {' · '}
+                <span className="font-semibold text-stone-500">{autoWalls.length}</span> 面自动墙
               </div>
             </div>
           </main>
 
-          {selectedFurniture && (
+          {(selectedFurniture || selectedWindow || selectedCurtain) && (
             <aside className="w-[260px] flex-shrink-0">
-              <div className="flex flex-col gap-4 p-5 bg-white rounded-2xl shadow-[0_4px_24px_rgba(92,74,61,0.1)] border border-stone-100">
-                <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-                  <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-6 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600" />
-                    <h2 className="text-lg font-semibold text-stone-800 tracking-tight">属性面板</h2>
+              {selectedFurniture && (
+                <div className="flex flex-col gap-4 p-5 bg-white rounded-2xl shadow-[0_4px_24px_rgba(92,74,61,0.1)] border border-stone-100">
+                  <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-6 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600" />
+                      <h2 className="text-lg font-semibold text-stone-800 tracking-tight">属性面板</h2>
+                    </div>
+                    <button
+                      onClick={() => selectFurniture(null)}
+                      className="p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => selectFurniture(null)}
-                    className="p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+
+                  <div
+                    className="w-full h-20 rounded-xl flex items-center justify-center text-white text-sm font-medium shadow-inner"
+                    style={{
+                      backgroundColor: selectedFurniture.color,
+                      backgroundImage:
+                        'linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0) 50%)',
+                    }}
                   >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
+                    {selectedFurniture.label}
+                  </div>
 
-                <div
-                  className="w-full h-20 rounded-xl flex items-center justify-center text-white text-sm font-medium shadow-inner"
-                  style={{
-                    backgroundColor: selectedFurniture.color,
-                    backgroundImage:
-                      'linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0) 50%)',
-                  }}
-                >
-                  {selectedFurniture.label}
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-stone-600 flex items-center gap-1.5">
-                    <Tag className="w-3.5 h-3.5" />
-                    名称
-                  </label>
-                  <input
-                    type="text"
-                    value={selectedFurniture.label}
-                    onChange={(e) => updateFurnitureLabel(selectedFurniture.id, e.target.value)}
-                    className="px-3 py-1.5 text-sm bg-stone-50 rounded-lg border border-stone-200 focus:border-amber-400 focus:outline-none focus:bg-white"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-stone-600 flex items-center gap-1.5">
-                    <Palette className="w-3.5 h-3.5" />
-                    颜色
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={selectedFurniture.color}
-                      onChange={(e) => updateFurnitureColor(selectedFurniture.id, e.target.value)}
-                      className="w-10 h-9 rounded-lg border border-stone-200 cursor-pointer bg-transparent"
-                    />
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-stone-600 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5" />
+                      名称
+                    </label>
                     <input
                       type="text"
-                      value={selectedFurniture.color}
-                      onChange={(e) => updateFurnitureColor(selectedFurniture.id, e.target.value)}
-                      className="flex-1 px-3 py-1.5 text-sm font-mono bg-stone-50 rounded-lg border border-stone-200 focus:border-amber-400 focus:outline-none focus:bg-white"
+                      value={selectedFurniture.label}
+                      onChange={(e) => updateFurnitureLabel(selectedFurniture.id, e.target.value)}
+                      className="px-3 py-1.5 text-sm bg-stone-50 rounded-lg border border-stone-200 focus:border-amber-400 focus:outline-none focus:bg-white"
                     />
                   </div>
-                </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-stone-600 flex items-center gap-1.5">
-                    <Maximize2 className="w-3.5 h-3.5" />
-                    尺寸（以格为单位）
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] text-stone-500">宽度</span>
-                      <div className="flex items-center gap-1">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-stone-600 flex items-center gap-1.5">
+                      <Palette className="w-3.5 h-3.5" />
+                      颜色
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={selectedFurniture.color}
+                        onChange={(e) => updateFurnitureColor(selectedFurniture.id, e.target.value)}
+                        className="w-10 h-9 rounded-lg border border-stone-200 cursor-pointer bg-transparent"
+                      />
+                      <input
+                        type="text"
+                        value={selectedFurniture.color}
+                        onChange={(e) => updateFurnitureColor(selectedFurniture.id, e.target.value)}
+                        className="flex-1 px-3 py-1.5 text-sm font-mono bg-stone-50 rounded-lg border border-stone-200 focus:border-amber-400 focus:outline-none focus:bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-stone-600 flex items-center gap-1.5">
+                      <Maximize2 className="w-3.5 h-3.5" />
+                      尺寸（以格为单位）
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] text-stone-500">宽度</span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={MIN_FURNITURE_GRIDS}
+                            max={MAX_FURNITURE_GRIDS}
+                            value={Math.round(selectedFurniture.width / GRID_SIZE)}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value);
+                              if (!isNaN(v)) updateFurnitureWidth(selectedFurniture.id, v);
+                            }}
+                            className="w-full px-2 py-1 text-sm text-center bg-stone-50 rounded border border-stone-200 focus:border-amber-400 focus:outline-none font-mono"
+                          />
+                        </div>
                         <input
-                          type="number"
+                          type="range"
                           min={MIN_FURNITURE_GRIDS}
                           max={MAX_FURNITURE_GRIDS}
                           value={Math.round(selectedFurniture.width / GRID_SIZE)}
-                          onChange={(e) => {
-                            const v = parseInt(e.target.value);
-                            if (!isNaN(v)) updateFurnitureWidth(selectedFurniture.id, v);
-                          }}
-                          className="w-full px-2 py-1 text-sm text-center bg-stone-50 rounded border border-stone-200 focus:border-amber-400 focus:outline-none font-mono"
+                          onChange={(e) =>
+                            updateFurnitureWidth(selectedFurniture.id, parseInt(e.target.value))
+                          }
+                          className="w-full accent-amber-500"
                         />
                       </div>
-                      <input
-                        type="range"
-                        min={MIN_FURNITURE_GRIDS}
-                        max={MAX_FURNITURE_GRIDS}
-                        value={Math.round(selectedFurniture.width / GRID_SIZE)}
-                        onChange={(e) =>
-                          updateFurnitureWidth(selectedFurniture.id, parseInt(e.target.value))
-                        }
-                        className="w-full accent-amber-500"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] text-stone-500">高度</span>
-                      <div className="flex items-center gap-1">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] text-stone-500">高度</span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={MIN_FURNITURE_GRIDS}
+                            max={MAX_FURNITURE_GRIDS}
+                            value={Math.round(selectedFurniture.height / GRID_SIZE)}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value);
+                              if (!isNaN(v)) updateFurnitureHeight(selectedFurniture.id, v);
+                            }}
+                            className="w-full px-2 py-1 text-sm text-center bg-stone-50 rounded border border-stone-200 focus:border-amber-400 focus:outline-none font-mono"
+                          />
+                        </div>
                         <input
-                          type="number"
+                          type="range"
                           min={MIN_FURNITURE_GRIDS}
                           max={MAX_FURNITURE_GRIDS}
                           value={Math.round(selectedFurniture.height / GRID_SIZE)}
-                          onChange={(e) => {
-                            const v = parseInt(e.target.value);
-                            if (!isNaN(v)) updateFurnitureHeight(selectedFurniture.id, v);
-                          }}
-                          className="w-full px-2 py-1 text-sm text-center bg-stone-50 rounded border border-stone-200 focus:border-amber-400 focus:outline-none font-mono"
+                          onChange={(e) =>
+                            updateFurnitureHeight(selectedFurniture.id, parseInt(e.target.value))
+                          }
+                          className="w-full accent-amber-500"
                         />
                       </div>
-                      <input
-                        type="range"
-                        min={MIN_FURNITURE_GRIDS}
-                        max={MAX_FURNITURE_GRIDS}
-                        value={Math.round(selectedFurniture.height / GRID_SIZE)}
-                        onChange={(e) =>
-                          updateFurnitureHeight(selectedFurniture.id, parseInt(e.target.value))
-                        }
-                        className="w-full accent-amber-500"
-                      />
+                    </div>
+                    <p className="text-[10px] text-stone-400 text-center pt-1">
+                      实际：{selectedFurniture.width} × {selectedFurniture.height} px
+                    </p>
+                  </div>
+
+                  <div className="pt-3 border-t border-stone-100">
+                    <button
+                      onClick={() => {
+                        removeFurniture(selectedFurniture.id);
+                        showToast('家具已删除');
+                      }}
+                      className="flex items-center justify-center gap-1.5 w-full py-2 text-sm font-medium rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      删除此家具
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {selectedWindow && (
+                <div className="flex flex-col gap-4 p-5 bg-white rounded-2xl shadow-[0_4px_24px_rgba(92,74,61,0.1)] border border-stone-100">
+                  <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-6 rounded-full bg-gradient-to-b from-sky-400 to-sky-600" />
+                      <h2 className="text-lg font-semibold text-stone-800 tracking-tight">窗户属性</h2>
+                    </div>
+                    <button
+                      onClick={() => selectWindow(null)}
+                      className="p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div
+                    className="w-full h-20 rounded-xl flex items-center justify-center text-white text-sm font-medium shadow-inner border-2 border-sky-400"
+                    style={{
+                      backgroundColor: 'rgba(135, 206, 250, 0.5)',
+                    }}
+                  >
+                    窗户
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between px-3 py-2 bg-sky-50 rounded-lg border border-sky-100">
+                      <span className="text-xs text-stone-600">墙面朝向</span>
+                      <span className="text-xs font-semibold text-sky-700">
+                        {selectedWindow.wallOrientation === 'top' ? '顶部墙' :
+                         selectedWindow.wallOrientation === 'bottom' ? '底部墙' :
+                         selectedWindow.wallOrientation === 'left' ? '左侧墙' : '右侧墙'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between px-3 py-2 bg-sky-50 rounded-lg border border-sky-100">
+                      <span className="text-xs text-stone-600">窗户宽度</span>
+                      <span className="text-xs font-semibold text-sky-700">{Math.round(selectedWindow.windowWidth)} px</span>
+                    </div>
+                    <div className="flex items-center justify-between px-3 py-2 bg-sky-50 rounded-lg border border-sky-100">
+                      <span className="text-xs text-stone-600">窗户高度</span>
+                      <span className="text-xs font-semibold text-sky-700">{Math.round(selectedWindow.windowHeight)} px</span>
                     </div>
                   </div>
-                  <p className="text-[10px] text-stone-400 text-center pt-1">
-                    实际：{selectedFurniture.width} × {selectedFurniture.height} px
-                  </p>
-                </div>
 
-                <div className="pt-3 border-t border-stone-100">
-                  <button
-                    onClick={() => {
-                      removeFurniture(selectedFurniture.id);
-                      showToast('家具已删除');
-                    }}
-                    className="flex items-center justify-center gap-1.5 w-full py-2 text-sm font-medium rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 transition-all"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    删除此家具
-                  </button>
+                  <div className="pt-3 border-t border-stone-100 flex flex-col gap-2">
+                    {!allCurtains.some((c) => c.windowId === selectedWindow.id) && (
+                      <button
+                        onClick={() => {
+                          const success = useDesignerStore.getState().addCurtain(selectedWindow.id, selectedWindow.roomId);
+                          if (success) showToast('窗帘已添加');
+                        }}
+                        className="flex items-center justify-center gap-1.5 w-full py-2 text-sm font-medium rounded-xl bg-violet-500 hover:bg-violet-600 text-white transition-all"
+                      >
+                        <Blinds className="w-4 h-4" />
+                        添加窗帘
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        removeWindow(selectedWindow.id);
+                        showToast('窗户已删除');
+                      }}
+                      className="flex items-center justify-center gap-1.5 w-full py-2 text-sm font-medium rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      删除此窗户
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {selectedCurtain && (
+                <div className="flex flex-col gap-4 p-5 bg-white rounded-2xl shadow-[0_4px_24px_rgba(92,74,61,0.1)] border border-stone-100">
+                  <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-6 rounded-full bg-gradient-to-b from-violet-400 to-violet-600" />
+                      <h2 className="text-lg font-semibold text-stone-800 tracking-tight">窗帘属性</h2>
+                    </div>
+                    <button
+                      onClick={() => selectCurtain(null)}
+                      className="p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div
+                    className="w-full h-20 rounded-xl flex items-center justify-center text-white text-sm font-medium shadow-inner"
+                    style={{
+                      background: 'repeating-linear-gradient(90deg, rgba(139, 92, 246, 0.8), rgba(139, 92, 246, 0.8) 8px, rgba(167, 139, 250, 0.8) 8px, rgba(167, 139, 250, 0.8) 16px)',
+                    }}
+                  >
+                    窗帘
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between px-3 py-2 bg-violet-50 rounded-lg border border-violet-100">
+                      <span className="text-xs text-stone-600">状态</span>
+                      <span className="text-xs font-semibold text-violet-700">
+                        {selectedCurtain.isOpen ? '已打开' : '已关闭'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-stone-100 flex flex-col gap-2">
+                    <button
+                      onClick={() => {
+                        toggleCurtain(selectedCurtain.id);
+                        showToast(selectedCurtain.isOpen ? '窗帘已关闭' : '窗帘已打开');
+                      }}
+                      className="flex items-center justify-center gap-1.5 w-full py-2 text-sm font-medium rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white transition-all"
+                    >
+                      {selectedCurtain.isOpen ? '关闭窗帘' : '打开窗帘'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        removeCurtain(selectedCurtain.id);
+                        showToast('窗帘已删除');
+                      }}
+                      className="flex items-center justify-center gap-1.5 w-full py-2 text-sm font-medium rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      删除此窗帘
+                    </button>
+                  </div>
+                </div>
+              )}
             </aside>
           )}
         </div>

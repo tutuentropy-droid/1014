@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useDesignerStore } from '@/store/useDesignerStore';
-import type { FurnitureItem, Room } from '@/types/furniture';
+import type { FurnitureItem, Room, WindowItem, CurtainItem } from '@/types/furniture';
 import { GRID_SIZE, CANVAS_WIDTH_GRIDS, CANVAS_HEIGHT_GRIDS } from '@/data/furnitureData';
 import { generateWallsForRooms } from '@/utils/collision';
 
@@ -13,6 +13,7 @@ const PLAYER_HEIGHT = 1.7;
 const PLAYER_RADIUS = 0.25;
 const MOVE_SPEED = 3.5;
 const MOUSE_SENSITIVITY = 0.002;
+const CURTAIN_ANIM_DURATION = 800;
 
 const hexToThreeColor = (hex: string): number => {
   try {
@@ -254,6 +255,165 @@ const createFallbackMesh = (w: number, d: number, h: number, color: number) => {
   return g;
 };
 
+const createWindowMesh = (win: WindowItem) => {
+  const group = new THREE.Group();
+  const wx = win.x * SCALE;
+  const wy = win.y * SCALE;
+  const ww = win.width * SCALE;
+  const wh = win.height * SCALE;
+  const winW = win.windowWidth * SCALE;
+  const winH = win.windowHeight * SCALE;
+
+  const windowBottom = 0.5;
+
+  let frameW = ww;
+  let frameD = wh;
+  let glassW = ww;
+  let glassD = wh;
+
+  if (win.wallOrientation === 'top' || win.wallOrientation === 'bottom') {
+    frameW = winW;
+    frameD = 0.04;
+    glassW = winW - 0.04;
+    glassD = 0.03;
+  } else {
+    frameW = 0.04;
+    frameD = winW;
+    glassW = 0.03;
+    glassD = winW - 0.04;
+  }
+
+  const frameMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.3,
+    metalness: 0.8,
+  });
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(frameW, winH, frameD), frameMat);
+  frame.castShadow = true;
+  frame.receiveShadow = true;
+  group.add(frame);
+
+  const glassMat = new THREE.MeshPhysicalMaterial({
+    color: 0xadd8e6,
+    transparent: true,
+    opacity: 0.25,
+    roughness: 0.05,
+    metalness: 0.1,
+    transmission: 0.9,
+    thickness: 0.02,
+    side: THREE.DoubleSide,
+  });
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(glassW, winH - 0.06, glassD), glassMat);
+  glass.castShadow = false;
+  glass.receiveShadow = true;
+  group.add(glass);
+
+  const crossMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.3,
+    metalness: 0.8,
+  });
+  if (win.wallOrientation === 'top' || win.wallOrientation === 'bottom') {
+    const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.03, winH - 0.06, 0.05), crossMat);
+    group.add(crossH);
+    const crossV = new THREE.Mesh(new THREE.BoxGeometry(frameW - 0.06, 0.03, 0.05), crossMat);
+    group.add(crossV);
+  } else {
+    const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.05, winH - 0.06, 0.03), crossMat);
+    group.add(crossH);
+    const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, frameD - 0.06), crossMat);
+    group.add(crossV);
+  }
+
+  let posX = wx + ww / 2;
+  let posZ = wy + wh / 2;
+  group.position.set(posX, windowBottom + winH / 2, posZ);
+
+  return group;
+};
+
+const createCurtainMesh = (curtain: CurtainItem, win: WindowItem) => {
+  const group = new THREE.Group();
+  const winW = win.windowWidth * SCALE;
+  const winH = win.windowHeight * SCALE;
+  const windowBottom = 0.5;
+
+  const curtainW = winW * 1.05;
+  const curtainH = winH + 0.1;
+  const panelCount = 12;
+  const panelWidth = curtainW / panelCount;
+
+  const curtainColor = 0x8b5cf6;
+  const panelMat = new THREE.MeshStandardMaterial({
+    color: curtainColor,
+    transparent: true,
+    opacity: 0.75,
+    roughness: 0.8,
+    metalness: 0.05,
+    side: THREE.DoubleSide,
+  });
+
+  const panels: Array<{ mesh: THREE.Mesh; originalX: number; isLeft: boolean }> = [];
+
+  for (let i = 0; i < panelCount; i++) {
+    const waveOffset = Math.sin(i * 0.8) * 0.015;
+    const panelGeo = new THREE.PlaneGeometry(panelWidth * 0.95, curtainH);
+    const panel = new THREE.Mesh(panelGeo, panelMat);
+    const zOffset = waveOffset;
+
+    const isLeft = i < panelCount / 2;
+    const originalX = -curtainW / 2 + panelWidth / 2 + i * panelWidth;
+    panel.position.x = originalX;
+
+    if (win.wallOrientation === 'top' || win.wallOrientation === 'bottom') {
+      panel.position.z = zOffset + (win.wallOrientation === 'top' ? -0.03 : 0.03);
+      panel.rotation.y = Math.PI / 2;
+    } else {
+      panel.position.z = zOffset + (win.wallOrientation === 'left' ? -0.03 : 0.03);
+    }
+
+    panel.position.y = windowBottom + curtainH / 2 - 0.02;
+    panel.castShadow = true;
+    panel.receiveShadow = true;
+    group.add(panel);
+
+    panels.push({ mesh: panel, originalX, isLeft });
+  }
+
+  (group as unknown as {
+    panels: Array<{ mesh: THREE.Mesh; originalX: number; isLeft: boolean }>;
+    progress: number;
+    targetProgress: number;
+    curtainW: number;
+  }).panels = panels;
+  (group as unknown as {
+    panels: Array<{ mesh: THREE.Mesh; originalX: number; isLeft: boolean }>;
+    progress: number;
+    targetProgress: number;
+    curtainW: number;
+  }).progress = curtain.isOpen ? 1 : 0;
+  (group as unknown as {
+    panels: Array<{ mesh: THREE.Mesh; originalX: number; isLeft: boolean }>;
+    progress: number;
+    targetProgress: number;
+    curtainW: number;
+  }).targetProgress = curtain.isOpen ? 1 : 0;
+  (group as unknown as {
+    panels: Array<{ mesh: THREE.Mesh; originalX: number; isLeft: boolean }>;
+    progress: number;
+    targetProgress: number;
+    curtainW: number;
+  }).curtainW = curtainW;
+
+  const wx = win.x * SCALE;
+  const wy = win.y * SCALE;
+  const ww = win.width * SCALE;
+  const wh = win.height * SCALE;
+  group.position.set(wx + ww / 2, 0, wy + wh / 2);
+
+  return group;
+};
+
 interface RoomView3DProps {
   onScreenshotReady?: (dataUrl: string) => void;
 }
@@ -266,8 +426,17 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const controlsRef = useRef<OrbitControls | null>(null);
   const floorsGroupRef = useRef<THREE.Group | null>(null);
   const wallsGroupRef = useRef<THREE.Group | null>(null);
+  const windowsGroupRef = useRef<THREE.Group | null>(null);
+  const curtainsGroupRef = useRef<THREE.Group | null>(null);
   const furnitureGroupRef = useRef<THREE.Group | null>(null);
   const furnitureMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
+  const windowMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
+  const curtainMeshesRef = useRef<Map<string, THREE.Group & {
+    panels?: Array<{ mesh: THREE.Mesh; originalX: number; isLeft: boolean }>;
+    progress?: number;
+    targetProgress?: number;
+    curtainW?: number;
+  }>>(new Map());
   const gltfLoaderRef = useRef<GLTFLoader | null>(null);
   const frameRef = useRef<number>(0);
   const initializedRef = useRef(false);
@@ -283,11 +452,16 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
 
   const rooms = useDesignerStore((s) => s.rooms);
   const selectedId = useDesignerStore((s) => s.selectedId);
+  const selectedWindowId = useDesignerStore((s) => s.selectedWindowId);
+  const selectedCurtainId = useDesignerStore((s) => s.selectedCurtainId);
   const selectedRoomId = useDesignerStore((s) => s.selectedRoomId);
   const getCatalogEntry = useDesignerStore((s) => s.getCatalogEntry);
   const getRoomById = useDesignerStore((s) => s.getRoomById);
+  const getAllCurtains = useDesignerStore((s) => s.getAllCurtains);
 
   const allFurniture = rooms.flatMap((r) => r.furniture);
+  const allWindows = rooms.flatMap((r) => r.windows);
+  const allCurtains = getAllCurtains();
 
   const CANVAS_W = CANVAS_WIDTH_GRIDS * GRID_SIZE * SCALE;
   const CANVAS_H = CANVAS_HEIGHT_GRIDS * GRID_SIZE * SCALE;
@@ -474,6 +648,54 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     [getCatalogEntry]
   );
 
+  const updateWindowMesh = useCallback(
+    (win: WindowItem) => {
+      const group = windowsGroupRef.current;
+      if (!group) return;
+      const existing = windowMeshesRef.current.get(win.id);
+      if (existing) {
+        group.remove(existing);
+        existing.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.geometry.dispose();
+            if (Array.isArray(child.material)) {
+              child.material.forEach((mat) => mat.dispose());
+            } else {
+              child.material.dispose();
+            }
+          }
+        });
+      }
+      const winMesh = createWindowMesh(win);
+      windowMeshesRef.current.set(win.id, winMesh);
+      group.add(winMesh);
+    },
+    []
+  );
+
+  const updateCurtainMesh = useCallback(
+    (curtain: CurtainItem) => {
+      const group = curtainsGroupRef.current;
+      if (!group) return;
+      const roomsData = rooms;
+      const win = roomsData.flatMap((r) => r.windows).find((w) => w.id === curtain.windowId);
+      if (!win) return;
+
+      const existing = curtainMeshesRef.current.get(curtain.id);
+      if (existing) {
+        if (existing.targetProgress !== undefined) {
+          existing.targetProgress = curtain.isOpen ? 1 : 0;
+        }
+        return;
+      }
+
+      const curtainMesh = createCurtainMesh(curtain, win);
+      curtainMeshesRef.current.set(curtain.id, curtainMesh);
+      group.add(curtainMesh);
+    },
+    [rooms]
+  );
+
   const clearGroup = (group: THREE.Group) => {
     while (group.children.length > 0) {
       const child = group.children[0];
@@ -544,8 +766,40 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     const container = containerRef.current;
     if (!container) return;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf5efe6);
-    scene.fog = new THREE.Fog(0xf5efe6, 15, 45);
+
+    const skyGeo = new THREE.SphereGeometry(80, 32, 32);
+    const skyMat = new THREE.ShaderMaterial({
+      uniforms: {
+        topColor: { value: new THREE.Color(0x87ceeb) },
+        bottomColor: { value: new THREE.Color(0xe0f6ff) },
+        offset: { value: 20 },
+        exponent: { value: 0.6 },
+      },
+      vertexShader: `
+        varying vec3 vWorldPosition;
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        uniform float offset;
+        uniform float exponent;
+        varying vec3 vWorldPosition;
+        void main() {
+          float h = normalize(vWorldPosition + offset).y;
+          gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
+        }
+      `,
+      side: THREE.BackSide,
+    });
+    const sky = new THREE.Mesh(skyGeo, skyMat);
+    scene.add(sky);
+
+    scene.fog = new THREE.Fog(0xc9e8f7, 20, 70);
     sceneRef.current = scene;
     const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 200);
     cameraRef.current = camera;
@@ -565,11 +819,11 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     controls.maxDistance = 50;
     controls.maxPolarAngle = Math.PI / 2.1;
     controlsRef.current = controls;
-    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
     scene.add(ambient);
-    const hemi = new THREE.HemisphereLight(0xfff1dd, 0xd9c7a8, 0.45);
+    const hemi = new THREE.HemisphereLight(0x87ceeb, 0xd9c7a8, 0.5);
     scene.add(hemi);
-    const dir = new THREE.DirectionalLight(0xfff5e1, 0.9);
+    const dir = new THREE.DirectionalLight(0xfff5e1, 1.0);
     dir.position.set(CANVAS_W * 0.3, 20, CANVAS_H * 0.3);
     dir.castShadow = true;
     dir.shadow.mapSize.set(2048, 2048);
@@ -583,8 +837,8 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     scene.add(dir);
     const bgGeo = new THREE.PlaneGeometry(CANVAS_W * 1.5, CANVAS_H * 1.5);
     const bgMat = new THREE.MeshStandardMaterial({
-      color: 0xe8dfcf,
-      roughness: 0.9,
+      color: 0x7cb342,
+      roughness: 0.95,
       metalness: 0,
     });
     const bg = new THREE.Mesh(bgGeo, bgMat);
@@ -598,6 +852,12 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     const wallsGroup = new THREE.Group();
     scene.add(wallsGroup);
     wallsGroupRef.current = wallsGroup;
+    const windowsGroup = new THREE.Group();
+    scene.add(windowsGroup);
+    windowsGroupRef.current = windowsGroup;
+    const curtainsGroup = new THREE.Group();
+    scene.add(curtainsGroup);
+    curtainsGroupRef.current = curtainsGroup;
     const furnitureGroup = new THREE.Group();
     scene.add(furnitureGroup);
     furnitureGroupRef.current = furnitureGroup;
@@ -608,6 +868,30 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
       const now = performance.now();
       const delta = (now - lastTime) / 1000;
       lastTime = now;
+
+      curtainMeshesRef.current.forEach((curtainGroup) => {
+        if (
+          curtainGroup.progress !== undefined &&
+          curtainGroup.targetProgress !== undefined &&
+          curtainGroup.panels &&
+          curtainGroup.curtainW !== undefined
+        ) {
+          const diff = curtainGroup.targetProgress - curtainGroup.progress;
+          if (Math.abs(diff) > 0.001) {
+            curtainGroup.progress += diff * Math.min(1, delta * 3);
+            const p = curtainGroup.progress;
+            const halfW = curtainGroup.curtainW / 2;
+            curtainGroup.panels.forEach(({ mesh, originalX, isLeft }) => {
+              if (isLeft) {
+                mesh.position.x = originalX - p * (originalX + halfW);
+              } else {
+                mesh.position.x = originalX + p * (halfW - originalX);
+              }
+            });
+          }
+        }
+      });
+
       if (isFirstPersonRef.current && camera) {
         const forward = new THREE.Vector3(-Math.sin(yawRef.current), 0, -Math.cos(yawRef.current));
         const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
@@ -775,6 +1059,60 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   }, [allFurniture, updateFurnitureMesh]);
 
   useEffect(() => {
+    const group = windowsGroupRef.current;
+    if (!group) return;
+    const existingIds = new Set(windowMeshesRef.current.keys());
+    const currentIds = new Set(allWindows.map((w) => w.id));
+    existingIds.forEach((id) => {
+      if (!currentIds.has(id)) {
+        const winMesh = windowMeshesRef.current.get(id);
+        if (winMesh) {
+          group.remove(winMesh);
+          winMesh.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              child.geometry.dispose();
+              if (Array.isArray(child.material)) {
+                child.material.forEach((mat) => mat.dispose());
+              } else {
+                child.material.dispose();
+              }
+            }
+          });
+        }
+        windowMeshesRef.current.delete(id);
+      }
+    });
+    allWindows.forEach((win) => updateWindowMesh(win));
+  }, [allWindows, updateWindowMesh]);
+
+  useEffect(() => {
+    const group = curtainsGroupRef.current;
+    if (!group) return;
+    const existingIds = new Set(curtainMeshesRef.current.keys());
+    const currentIds = new Set(allCurtains.map((c) => c.id));
+    existingIds.forEach((id) => {
+      if (!currentIds.has(id)) {
+        const curtainMesh = curtainMeshesRef.current.get(id);
+        if (curtainMesh) {
+          group.remove(curtainMesh);
+          curtainMesh.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              child.geometry.dispose();
+              if (Array.isArray(child.material)) {
+                child.material.forEach((mat) => mat.dispose());
+              } else {
+                child.material.dispose();
+              }
+            }
+          });
+        }
+        curtainMeshesRef.current.delete(id);
+      }
+    });
+    allCurtains.forEach((curtain) => updateCurtainMesh(curtain));
+  }, [allCurtains, updateCurtainMesh]);
+
+  useEffect(() => {
     furnitureMeshesRef.current.forEach((group, id) => {
       group.traverse((child) => {
         if (child instanceof THREE.Mesh) {
@@ -789,7 +1127,39 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         }
       });
     });
-  }, [selectedId]);
+
+    windowMeshesRef.current.forEach((group, id) => {
+      group.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          const mat = child.material as THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial;
+          if ('emissive' in mat) {
+            if (id === selectedWindowId) {
+              mat.emissive = new THREE.Color(0x3b82f6);
+              mat.emissiveIntensity = 0.4;
+            } else {
+              mat.emissive = new THREE.Color(0x000000);
+              mat.emissiveIntensity = 0;
+            }
+          }
+        }
+      });
+    });
+
+    curtainMeshesRef.current.forEach((group, id) => {
+      group.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          const mat = child.material as THREE.MeshStandardMaterial;
+          if (id === selectedCurtainId) {
+            mat.emissive = new THREE.Color(0x8b5cf6);
+            mat.emissiveIntensity = 0.35;
+          } else {
+            mat.emissive = new THREE.Color(0x000000);
+            mat.emissiveIntensity = 0;
+          }
+        }
+      });
+    });
+  }, [selectedId, selectedWindowId, selectedCurtainId]);
 
   return (
     <div

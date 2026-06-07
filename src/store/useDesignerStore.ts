@@ -7,6 +7,9 @@ import type {
   DrawMode,
   CustomFurnitureCatalogEntry,
   Room,
+  WindowItem,
+  CurtainItem,
+  WallOrientation,
 } from '@/types/furniture';
 import {
   FURNITURE_CATALOG,
@@ -37,6 +40,8 @@ interface DesignState {
   walls: WallItem[];
   selectedId: string | null;
   selectedRoomId: string | null;
+  selectedWindowId: string | null;
+  selectedCurtainId: string | null;
   viewMode: ViewMode;
   drawMode: DrawMode;
   customCatalog: Record<string, CustomFurnitureCatalogEntry>;
@@ -53,6 +58,10 @@ interface DesignState {
   getAllFurnitureTypes: () => FurnitureType[];
   getAllFurniture: () => FurnitureItem[];
   getAutoWalls: () => GeneratedWall[];
+  getAllWindows: () => WindowItem[];
+  getAllCurtains: () => CurtainItem[];
+  getWindowById: (id: string) => WindowItem | undefined;
+  getCurtainById: (id: string) => CurtainItem | undefined;
 
   setRoomWidthGrids: (grids: number) => void;
   setRoomHeightGrids: (grids: number) => void;
@@ -67,6 +76,15 @@ interface DesignState {
   updateFurnitureHeight: (id: string, heightGrids: number) => boolean;
   updateFurnitureColor: (id: string, color: string) => void;
   updateFurnitureLabel: (id: string, label: string) => void;
+
+  addWindow: (roomId: string, x: number, y: number, width: number, height: number, wallOrientation: WallOrientation, wallOffset: number, windowWidth: number, windowHeight: number) => boolean;
+  removeWindow: (windowId: string) => void;
+  selectWindow: (id: string | null) => void;
+
+  addCurtain: (windowId: string, roomId: string) => boolean;
+  removeCurtain: (curtainId: string) => void;
+  toggleCurtain: (curtainId: string) => void;
+  selectCurtain: (id: string | null) => void;
 
   addCustomFurnitureType: (
     typeId: string,
@@ -133,6 +151,8 @@ const getDefaultRooms = (): Room[] => {
     heightGrids: 10,
     color: nextRoomColor(),
     furniture: [],
+    windows: [],
+    curtains: [],
     roomWidthGrids: 14,
     roomHeightGrids: 10,
   };
@@ -145,6 +165,8 @@ const getDefaultRooms = (): Room[] => {
     heightGrids: 10,
     color: nextRoomColor(),
     furniture: [],
+    windows: [],
+    curtains: [],
     roomWidthGrids: 10,
     roomHeightGrids: 10,
   };
@@ -157,6 +179,8 @@ const getDefaultRooms = (): Room[] => {
     heightGrids: 8,
     color: nextRoomColor(),
     furniture: [],
+    windows: [],
+    curtains: [],
     roomWidthGrids: 10,
     roomHeightGrids: 8,
   };
@@ -169,6 +193,8 @@ const getDefaultRooms = (): Room[] => {
     heightGrids: 8,
     color: nextRoomColor(),
     furniture: [],
+    windows: [],
+    curtains: [],
     roomWidthGrids: 6,
     roomHeightGrids: 8,
   };
@@ -182,6 +208,8 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
   walls: [],
   selectedId: null,
   selectedRoomId: null,
+  selectedWindowId: null,
+  selectedCurtainId: null,
   viewMode: '2d',
   drawMode: 'none',
   customCatalog: {},
@@ -226,6 +254,10 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
   getAllFurniture: () => collectAllFurniture(get().rooms),
 
   getAutoWalls: () => generateWallsForRooms(get().rooms),
+  getAllWindows: () => get().rooms.flatMap((r) => r.windows),
+  getAllCurtains: () => get().rooms.flatMap((r) => r.curtains),
+  getWindowById: (id: string) => get().rooms.flatMap((r) => r.windows).find((w) => w.id === id),
+  getCurtainById: (id: string) => get().rooms.flatMap((r) => r.curtains).find((c) => c.id === id),
 
   setRoomWidthGrids: (grids: number) => {
     const clamped = clampRoomGrids(grids, MIN_ROOM_GRIDS, MAX_ROOM_GRIDS);
@@ -327,7 +359,7 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
     get().syncRoomFurniture();
   },
 
-  selectFurniture: (id: string | null) => set({ selectedId: id }),
+  selectFurniture: (id: string | null) => set({ selectedId: id, selectedWindowId: null, selectedCurtainId: null }),
 
   updateFurnitureWidth: (id: string, widthGrids: number) => {
     const rooms = get().rooms;
@@ -415,6 +447,115 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
     get().syncRoomFurniture();
   },
 
+  addWindow: (roomId, x, y, width, height, wallOrientation, wallOffset, windowWidth, windowHeight) => {
+    const rooms = get().rooms;
+    const room = rooms.find((r) => r.id === roomId);
+    if (!room) return false;
+
+    const newWindow: WindowItem = {
+      id: generateId('window'),
+      roomId,
+      x,
+      y,
+      width,
+      height,
+      wallOrientation,
+      wallOffset,
+      windowWidth,
+      windowHeight,
+    };
+
+    set({
+      rooms: rooms.map((r) =>
+        r.id === roomId ? { ...r, windows: [...r.windows, newWindow] } : r
+      ),
+      selectedWindowId: newWindow.id,
+      selectedRoomId: roomId,
+    });
+    return true;
+  },
+
+  removeWindow: (windowId) => {
+    const rooms = get().rooms;
+    const targetRoom = rooms.find((r) => r.windows.some((w) => w.id === windowId));
+    if (!targetRoom) return;
+    set({
+      rooms: rooms.map((r) =>
+        r.id === targetRoom.id
+          ? {
+              ...r,
+              windows: r.windows.filter((w) => w.id !== windowId),
+              curtains: r.curtains.filter((c) => c.windowId !== windowId),
+            }
+          : r
+      ),
+      selectedWindowId: get().selectedWindowId === windowId ? null : get().selectedWindowId,
+      selectedCurtainId: get().getAllCurtains().find((c) => c.windowId === windowId)?.id === get().selectedCurtainId
+        ? null
+        : get().selectedCurtainId,
+    });
+  },
+
+  selectWindow: (id) => {
+    set({ selectedWindowId: id, selectedId: null, selectedCurtainId: null });
+  },
+
+  addCurtain: (windowId, roomId) => {
+    const rooms = get().rooms;
+    const room = rooms.find((r) => r.id === roomId);
+    if (!room) return false;
+    if (room.curtains.some((c) => c.windowId === windowId)) return false;
+
+    const newCurtain: CurtainItem = {
+      id: generateId('curtain'),
+      windowId,
+      roomId,
+      isOpen: false,
+    };
+
+    set({
+      rooms: rooms.map((r) =>
+        r.id === roomId ? { ...r, curtains: [...r.curtains, newCurtain] } : r
+      ),
+      selectedCurtainId: newCurtain.id,
+    });
+    return true;
+  },
+
+  removeCurtain: (curtainId) => {
+    const rooms = get().rooms;
+    const targetRoom = rooms.find((r) => r.curtains.some((c) => c.id === curtainId));
+    if (!targetRoom) return;
+    set({
+      rooms: rooms.map((r) =>
+        r.id === targetRoom.id ? { ...r, curtains: r.curtains.filter((c) => c.id !== curtainId) } : r
+      ),
+      selectedCurtainId: get().selectedCurtainId === curtainId ? null : get().selectedCurtainId,
+    });
+  },
+
+  toggleCurtain: (curtainId) => {
+    const rooms = get().rooms;
+    const targetRoom = rooms.find((r) => r.curtains.some((c) => c.id === curtainId));
+    if (!targetRoom) return;
+    set({
+      rooms: rooms.map((r) =>
+        r.id === targetRoom.id
+          ? {
+              ...r,
+              curtains: r.curtains.map((c) =>
+                c.id === curtainId ? { ...c, isOpen: !c.isOpen } : c
+              ),
+            }
+          : r
+      ),
+    });
+  },
+
+  selectCurtain: (id) => {
+    set({ selectedCurtainId: id, selectedId: null, selectedWindowId: null });
+  },
+
   addCustomFurnitureType: (typeId: string, entry: CustomFurnitureCatalogEntry) => {
     set({
       customCatalog: {
@@ -453,10 +594,16 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
   loadLayout: () => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
+      const normalizeRooms = (r: Room[]): Room[] =>
+        r.map((room) => ({
+          ...room,
+          windows: room.windows ?? [],
+          curtains: room.curtains ?? [],
+        }));
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<PersistedState>;
         const rooms = parsed.rooms && parsed.rooms.length > 0
-          ? parsed.rooms
+          ? normalizeRooms(parsed.rooms as Room[])
           : getDefaultRooms();
         const currentRoomId = parsed.currentRoomId && rooms.some((r) => r.id === parsed.currentRoomId)
           ? parsed.currentRoomId
@@ -467,6 +614,8 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
           currentRoomId,
           furniture: collectAllFurniture(rooms),
           selectedRoomId: currentRoom.id,
+          selectedWindowId: null,
+          selectedCurtainId: null,
           roomWidthGrids: currentRoom.widthGrids,
           roomHeightGrids: currentRoom.heightGrids,
           customCatalog: parsed.customCatalog ?? {},
@@ -482,6 +631,8 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
           currentRoomId: firstRoom.id,
           furniture: collectAllFurniture(rooms),
           selectedRoomId: firstRoom.id,
+          selectedWindowId: null,
+          selectedCurtainId: null,
           roomWidthGrids: firstRoom.widthGrids,
           roomHeightGrids: firstRoom.heightGrids,
           customCatalog: {},
@@ -499,6 +650,8 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
         currentRoomId: firstRoom.id,
         furniture: collectAllFurniture(rooms),
         selectedRoomId: firstRoom.id,
+        selectedWindowId: null,
+        selectedCurtainId: null,
         roomWidthGrids: firstRoom.widthGrids,
         roomHeightGrids: firstRoom.heightGrids,
         customCatalog: {},
@@ -581,6 +734,8 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
       heightGrids: h,
       color: nextRoomColor(),
       furniture: [],
+      windows: [],
+      curtains: [],
       roomWidthGrids: w,
       roomHeightGrids: h,
     };

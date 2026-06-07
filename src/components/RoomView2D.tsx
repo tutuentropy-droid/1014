@@ -2,13 +2,13 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { FurnitureIcon } from './FurnitureIcon';
 import { useDesignerStore } from '@/store/useDesignerStore';
 import { GRID_SIZE, CANVAS_WIDTH_GRIDS, CANVAS_HEIGHT_GRIDS } from '@/data/furnitureData';
-import type { FurnitureItem, FurnitureType, Room } from '@/types/furniture';
-import { canPlaceFurnitureInRoom, generateWallsForRooms, canPlaceRoom } from '@/utils/collision';
+import type { FurnitureItem, FurnitureType, Room, WindowItem, CurtainItem } from '@/types/furniture';
+import { canPlaceFurnitureInRoom, generateWallsForRooms, canPlaceRoom, snapWindowToWall, findWallAtPoint } from '@/utils/collision';
 
 type RoomResizeHandle = 'nw' | 'ne' | 'sw' | 'se';
 
 interface DragState {
-  type: 'move-furniture' | 'new-furniture' | 'move-room' | 'resize-room';
+  type: 'move-furniture' | 'new-furniture' | 'move-room' | 'resize-room' | 'draw-window';
   furnitureType?: FurnitureType;
   id?: string;
   offsetX: number;
@@ -21,6 +21,8 @@ interface DragState {
   roomOrigY?: number;
   roomOrigW?: number;
   roomOrigH?: number;
+  startX?: number;
+  startY?: number;
 }
 
 interface PanState {
@@ -38,6 +40,9 @@ export const RoomView2D = () => {
     rooms,
     selectedId,
     selectedRoomId,
+    selectedWindowId,
+    selectedCurtainId,
+    drawMode,
     addFurniture,
     moveFurniture,
     selectFurniture,
@@ -48,6 +53,14 @@ export const RoomView2D = () => {
     getCanvasWidth,
     getCanvasHeight,
     getCatalogEntry,
+    setDrawMode,
+    addWindow,
+    removeWindow,
+    selectWindow,
+    addCurtain,
+    removeCurtain,
+    toggleCurtain,
+    selectCurtain,
   } = useDesignerStore();
 
   const canvasWidth = getCanvasWidth();
@@ -57,6 +70,7 @@ export const RoomView2D = () => {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [ghostPos, setGhostPos] = useState<{ x: number; y: number; valid: boolean; width: number; height: number } | null>(null);
   const [roomGhost, setRoomGhost] = useState<{ x: number; y: number; w: number; h: number; valid: boolean } | null>(null);
+  const [windowGhost, setWindowGhost] = useState<{ x: number; y: number; w: number; h: number; valid: boolean; windowWidth: number; windowHeight: number } | null>(null);
   const [scale, setScale] = useState(0.75);
   const [offsetX, setOffsetX] = useState(20);
   const [offsetY, setOffsetY] = useState(20);
@@ -79,6 +93,31 @@ export const RoomView2D = () => {
     return undefined;
   }, [rooms]);
 
+  const findWindowAt = useCallback((x: number, y: number): WindowItem | null => {
+    for (const room of rooms) {
+      for (const win of room.windows) {
+        if (x >= win.x && x <= win.x + win.width && y >= win.y && y <= win.y + win.height) {
+          return win;
+        }
+      }
+    }
+    return null;
+  }, [rooms]);
+
+  const findCurtainAt = useCallback((x: number, y: number): CurtainItem | null => {
+    for (const room of rooms) {
+      for (const curtain of room.curtains) {
+        const win = room.windows.find((w) => w.id === curtain.windowId);
+        if (win) {
+          if (x >= win.x && x <= win.x + win.width && y >= win.y && y <= win.y + win.height) {
+            return curtain;
+          }
+        }
+      }
+    }
+    return null;
+  }, [rooms]);
+
   const screenToCanvas = useCallback(
     (clientX: number, clientY: number) => {
       const container = containerRef.current;
@@ -96,19 +135,28 @@ export const RoomView2D = () => {
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+      if ((e.key === 'Delete' || e.key === 'Backspace')) {
         const active = document.activeElement;
         if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
-        removeFurniture(selectedId);
+        if (selectedId) {
+          removeFurniture(selectedId);
+        } else if (selectedWindowId) {
+          removeWindow(selectedWindowId);
+        } else if (selectedCurtainId) {
+          removeCurtain(selectedCurtainId);
+        }
       }
       if (e.key === 'Escape') {
         selectFurniture(null);
         selectRoom(null);
+        selectWindow(null);
+        selectCurtain(null);
+        setDrawMode('none');
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [selectedId, removeFurniture, selectFurniture, selectRoom]);
+  }, [selectedId, selectedWindowId, selectedCurtainId, removeFurniture, removeWindow, removeCurtain, selectFurniture, selectRoom, selectWindow, selectCurtain, setDrawMode]);
 
   const handleWheel = useCallback(
     (e: WheelEvent) => {
@@ -246,6 +294,8 @@ export const RoomView2D = () => {
     e.stopPropagation();
     selectFurniture(item.id);
     selectRoom(item.roomId);
+    selectWindow(null);
+    selectCurtain(null);
     const { x, y } = screenToCanvas(e.clientX, e.clientY);
     setDrag({
       type: 'move-furniture',
@@ -258,11 +308,38 @@ export const RoomView2D = () => {
     });
   };
 
+  const handleWindowMouseDown = (e: React.MouseEvent, win: WindowItem) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+
+    if (drawMode === 'curtain') {
+      addCurtain(win.id, win.roomId);
+      setDrawMode('none');
+      return;
+    }
+
+    selectWindow(win.id);
+    selectRoom(win.roomId);
+    selectFurniture(null);
+    selectCurtain(null);
+  };
+
+  const handleCurtainMouseDown = (e: React.MouseEvent, curtain: CurtainItem) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    selectCurtain(curtain.id);
+    selectWindow(null);
+    selectFurniture(null);
+    selectRoom(curtain.roomId);
+  };
+
   const handleRoomMouseDown = (e: React.MouseEvent, room: Room) => {
     if (e.button !== 0) return;
     e.stopPropagation();
     selectRoom(room.id);
     selectFurniture(null);
+    selectWindow(null);
+    selectCurtain(null);
     const { x, y } = screenToCanvas(e.clientX, e.clientY);
     const rx = room.x * GRID_SIZE;
     const ry = room.y * GRID_SIZE;
@@ -370,6 +447,21 @@ export const RoomView2D = () => {
           CANVAS_HEIGHT_GRIDS
         );
         setRoomGhost({ x: newX, y: newY, w: newW, h: newH, valid });
+      } else if (drag.type === 'draw-window') {
+        const result = snapWindowToWall(drag.startX!, drag.startY!, x, y, rooms);
+        if (result.valid) {
+          setWindowGhost({
+            x: result.x!,
+            y: result.y!,
+            w: result.width!,
+            h: result.height!,
+            valid: true,
+            windowWidth: result.windowWidth!,
+            windowHeight: result.windowHeight!,
+          });
+        } else if (windowGhost) {
+          setWindowGhost({ ...windowGhost, valid: false });
+        }
       }
     };
 
@@ -380,10 +472,28 @@ export const RoomView2D = () => {
         moveRoom(drag.roomId!, roomGhost.x, roomGhost.y);
       } else if (drag.type === 'resize-room' && roomGhost && roomGhost.valid) {
         resizeRoom(drag.roomId!, roomGhost.w, roomGhost.h);
+      } else if (drag.type === 'draw-window' && windowGhost && windowGhost.valid) {
+        const startWall = findWallAtPoint(drag.startX!, drag.startY!, rooms);
+        if (startWall) {
+          addWindow(
+            startWall.roomId,
+            windowGhost.x,
+            windowGhost.y,
+            windowGhost.w,
+            windowGhost.h,
+            startWall.wallOrientation,
+            startWall.wallOrientation === 'top' || startWall.wallOrientation === 'bottom'
+              ? windowGhost.x - startWall.room.x * GRID_SIZE
+              : windowGhost.y - startWall.room.y * GRID_SIZE,
+            windowGhost.windowWidth,
+            windowGhost.windowHeight
+          );
+        }
       }
       setDrag(null);
       setGhostPos(null);
       setRoomGhost(null);
+      setWindowGhost(null);
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -392,7 +502,7 @@ export const RoomView2D = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [drag, ghostPos, roomGhost, rooms, screenToCanvas, moveFurniture, moveRoom, resizeRoom]);
+  }, [drag, ghostPos, roomGhost, windowGhost, rooms, screenToCanvas, moveFurniture, moveRoom, resizeRoom, addWindow]);
 
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1) {
@@ -400,9 +510,42 @@ export const RoomView2D = () => {
       return;
     }
     if (e.button !== 0) return;
+
+    const { x, y } = screenToCanvas(e.clientX, e.clientY);
+
+    if (drawMode === 'window') {
+      const wallHit = findWallAtPoint(x, y, rooms);
+      if (wallHit) {
+        e.stopPropagation();
+        setDrag({
+          type: 'draw-window',
+          offsetX: 0,
+          offsetY: 0,
+          width: 0,
+          height: 0,
+          startX: x,
+          startY: y,
+          roomId: wallHit.roomId,
+        });
+        return;
+      }
+    }
+
+    if (drawMode === 'curtain') {
+      const win = findWindowAt(x, y);
+      if (win) {
+        e.stopPropagation();
+        addCurtain(win.id, win.roomId);
+        setDrawMode('none');
+        return;
+      }
+    }
+
     if (e.target === e.currentTarget) {
       selectFurniture(null);
       selectRoom(null);
+      selectWindow(null);
+      selectCurtain(null);
     }
   };
 
@@ -443,6 +586,13 @@ export const RoomView2D = () => {
 
   const autoWalls = generateWallsForRooms(rooms);
 
+  const selectedCurtain = selectedCurtainId
+    ? rooms.flatMap((r) => r.curtains).find((c) => c.id === selectedCurtainId)
+    : null;
+  const selectedWindow = selectedWindowId
+    ? rooms.flatMap((r) => r.windows).find((w) => w.id === selectedWindowId)
+    : null;
+
   return (
     <div
       ref={containerRef}
@@ -453,7 +603,11 @@ export const RoomView2D = () => {
       className={`relative rounded-2xl shadow-[0_8px_40px_rgba(92,74,61,0.12)] border-2 overflow-hidden select-none transition-all ${
         isPanning
           ? 'border-stone-400 cursor-grabbing'
-          : 'border-stone-300 cursor-grab'
+          : drawMode === 'window'
+            ? 'border-sky-400 cursor-crosshair'
+            : drawMode === 'curtain'
+              ? 'border-violet-400 cursor-pointer'
+              : 'border-stone-300 cursor-grab'
       }`}
       style={{
         width: Math.min(1100, window.innerWidth - 600),
@@ -575,6 +729,75 @@ export const RoomView2D = () => {
                   );
                 })}
 
+                {room.windows.map((win) => {
+                  const isWinSelected = selectedWindowId === win.id;
+                  const curtain = room.curtains.find((c) => c.windowId === win.id);
+                  const isCurtainSelected = curtain && selectedCurtainId === curtain.id;
+                  return (
+                    <div key={win.id}>
+                      <div
+                        onMouseDown={(e) => handleWindowMouseDown(e, win)}
+                        className={`absolute cursor-pointer transition-all z-20 ${
+                          isWinSelected || isCurtainSelected
+                            ? 'ring-2 ring-sky-500 ring-offset-1'
+                            : 'hover:ring-2 hover:ring-sky-400'
+                        }`}
+                        style={{
+                          left: win.x - rx,
+                          top: win.y - ry,
+                          width: win.width,
+                          height: win.height,
+                          backgroundColor: 'rgba(135, 206, 250, 0.6)',
+                          border: '2px solid #4a90d9',
+                          borderRadius: 2,
+                        }}
+                      >
+                        <div
+                          className="absolute whitespace-nowrap text-[9px] font-mono font-bold"
+                          style={{
+                            color: '#1e40af',
+                            bottom: win.wallOrientation === 'top' ? -14 : 'auto',
+                            top: win.wallOrientation === 'bottom' ? -14 : win.wallOrientation === 'left' || win.wallOrientation === 'right' ? '50%' : 'auto',
+                            left: win.wallOrientation === 'left' ? -14 : win.wallOrientation === 'right' ? 'auto' : '50%',
+                            right: win.wallOrientation === 'right' ? -14 : 'auto',
+                            transform:
+                              win.wallOrientation === 'top' || win.wallOrientation === 'bottom'
+                                ? 'translateX(-50%)'
+                                : 'translateY(-50%) rotate(90deg)',
+                          }}
+                        >
+                          {Math.round(win.windowWidth)}×{Math.round(win.windowHeight)}
+                        </div>
+                      </div>
+                      {curtain && (
+                        <div
+                          onMouseDown={(e) => handleCurtainMouseDown(e, curtain)}
+                          className={`absolute cursor-pointer transition-all z-25 ${
+                            isCurtainSelected
+                              ? 'ring-2 ring-violet-500 ring-offset-1'
+                              : 'hover:ring-2 hover:ring-violet-400'
+                          }`}
+                          style={{
+                            left: win.x - rx + (win.wallOrientation === 'left' ? 4 : win.wallOrientation === 'right' ? -4 : 0),
+                            top: win.y - ry + (win.wallOrientation === 'top' ? 4 : win.wallOrientation === 'bottom' ? -4 : 0),
+                            width: win.wallOrientation === 'top' || win.wallOrientation === 'bottom' ? win.width : 4,
+                            height: win.wallOrientation === 'top' || win.wallOrientation === 'bottom' ? 4 : win.height,
+                            background: `repeating-linear-gradient(
+                              ${win.wallOrientation === 'top' || win.wallOrientation === 'bottom' ? '90deg' : '0deg'},
+                              rgba(139, 92, 246, 0.65),
+                              rgba(139, 92, 246, 0.65) 4px,
+                              rgba(167, 139, 250, 0.65) 4px,
+                              rgba(167, 139, 250, 0.65) 8px
+                            )`,
+                            borderRadius: 2,
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+
                 {isSelected && !isMoving && !isResizing && (
                   <>
                     {(['nw', 'ne', 'sw', 'se'] as RoomResizeHandle[]).map((handle) => {
@@ -630,7 +853,7 @@ export const RoomView2D = () => {
           />
         ))}
 
-        {ghostPos && drag && drag.type !== 'move-room' && drag.type !== 'resize-room' && (
+        {ghostPos && drag && drag.type !== 'move-room' && drag.type !== 'resize-room' && drag.type !== 'draw-window' && (
           <div
             className={`absolute rounded-lg pointer-events-none border-2 border-dashed z-50 ${
               ghostPos.valid ? 'border-emerald-500 bg-emerald-500/15' : 'border-red-500 bg-red-500/15'
@@ -643,7 +866,65 @@ export const RoomView2D = () => {
             }}
           />
         )}
+
+        {windowGhost && drag?.type === 'draw-window' && (
+          <div
+            className={`absolute pointer-events-none border-2 border-dashed z-50 ${
+              windowGhost.valid ? 'border-sky-500 bg-sky-400/40' : 'border-red-500 bg-red-500/15'
+            }`}
+            style={{
+              left: windowGhost.x,
+              top: windowGhost.y,
+              width: windowGhost.w,
+              height: windowGhost.h,
+            }}
+          />
+        )}
       </div>
+
+      {(selectedWindow || selectedCurtain) && (
+        <div className="absolute top-3 right-3 z-20 flex items-center gap-2 bg-white/95 backdrop-blur rounded-xl px-3 py-2 shadow-lg border border-stone-200">
+          {selectedWindow && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-stone-600 font-medium">窗户</span>
+              <button
+                onClick={() => {
+                  if (!rooms.flatMap((r) => r.curtains).some((c) => c.windowId === selectedWindow.id)) {
+                    addCurtain(selectedWindow.id, selectedWindow.roomId);
+                  }
+                }}
+                disabled={rooms.flatMap((r) => r.curtains).some((c) => c.windowId === selectedWindow.id)}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-500 text-white hover:bg-violet-600 disabled:bg-stone-300 disabled:cursor-not-allowed transition-colors"
+              >
+                {rooms.flatMap((r) => r.curtains).some((c) => c.windowId === selectedWindow.id) ? '已有窗帘' : '添加窗帘'}
+              </button>
+              <button
+                onClick={() => removeWindow(selectedWindow.id)}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors"
+              >
+                删除窗户
+              </button>
+            </div>
+          )}
+          {selectedCurtain && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-stone-600 font-medium">窗帘</span>
+              <button
+                onClick={() => toggleCurtain(selectedCurtain.id)}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
+              >
+                {selectedCurtain.isOpen ? '关闭窗帘' : '打开窗帘'}
+              </button>
+              <button
+                onClick={() => removeCurtain(selectedCurtain.id)}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors"
+              >
+                删除窗帘
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="absolute top-3 left-3 flex items-center gap-2 z-20 flex-wrap">
         <div className="px-2.5 py-1 bg-white/90 backdrop-blur rounded-md text-[10px] text-stone-600 font-mono border border-stone-200 shadow-sm">
@@ -653,8 +934,18 @@ export const RoomView2D = () => {
           缩放 {Math.round(scale * 100)}%
         </div>
         <div className="px-2.5 py-1 bg-white/90 backdrop-blur rounded-md text-[10px] text-stone-600 border border-stone-200 shadow-sm">
-          {rooms.length} 个房间 · {rooms.reduce((s, r) => s + r.furniture.length, 0)} 件家具
+          {rooms.length} 个房间 · {rooms.reduce((s, r) => s + r.furniture.length, 0)} 件家具 · {rooms.reduce((s, r) => s + r.windows.length, 0)} 个窗户
         </div>
+        {drawMode === 'window' && (
+          <div className="px-2.5 py-1 bg-sky-500/90 backdrop-blur rounded-md text-[10px] text-white font-medium border border-sky-400 shadow-sm">
+            添加窗户模式 · 在墙壁上拖拽绘制
+          </div>
+        )}
+        {drawMode === 'curtain' && (
+          <div className="px-2.5 py-1 bg-violet-500/90 backdrop-blur rounded-md text-[10px] text-white font-medium border border-violet-400 shadow-sm">
+            添加窗帘模式 · 点击窗户添加窗帘
+          </div>
+        )}
       </div>
 
       <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 bg-white/90 backdrop-blur rounded-md text-[10px] text-stone-600 font-mono border border-stone-200 shadow-sm">

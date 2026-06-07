@@ -43,7 +43,29 @@ export interface CustomFurnitureCatalogEntry {
 }
 
 export type ViewMode = '2d' | '3d';
-export type DrawMode = 'none' | 'wall' | 'room';
+export type DrawMode = 'none' | 'wall' | 'room' | 'window' | 'curtain';
+
+export type WallOrientation = 'top' | 'bottom' | 'left' | 'right';
+
+export interface WindowItem {
+  id: string;
+  roomId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  wallOrientation: WallOrientation;
+  wallOffset: number;
+  windowWidth: number;
+  windowHeight: number;
+}
+
+export interface CurtainItem {
+  id: string;
+  windowId: string;
+  roomId: string;
+  isOpen: boolean;
+}
 
 export interface Room {
   id: string;
@@ -54,6 +76,8 @@ export interface Room {
   heightGrids: number;
   color: string;
   furniture: FurnitureItem[];
+  windows: WindowItem[];
+  curtains: CurtainItem[];
   roomWidthGrids: number;
   roomHeightGrids: number;
 }

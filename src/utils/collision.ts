@@ -1,4 +1,4 @@
-import type { FurnitureItem, WallItem, Room } from '@/types/furniture';
+import type { FurnitureItem, WallItem, Room, WallOrientation } from '@/types/furniture';
 import { GRID_SIZE } from '@/data/furnitureData';
 
 export const aabbOverlap = (
@@ -172,4 +172,168 @@ export const generateWallsForRooms = (rooms: Room[]): GeneratedWall[] => {
   }
 
   return walls;
+};
+
+export interface WallHitResult {
+  roomId: string;
+  room: Room;
+  wallOrientation: WallOrientation;
+  wallX: number;
+  wallY: number;
+  wallWidth: number;
+  wallHeight: number;
+  offsetAlongWall: number;
+}
+
+const WALL_THICKNESS = GRID_SIZE * 0.2;
+const WALL_SNAP_DISTANCE = GRID_SIZE * 0.4;
+
+export const findWallAtPoint = (
+  x: number,
+  y: number,
+  rooms: Room[]
+): WallHitResult | null => {
+  for (const room of rooms) {
+    const rx = room.x * GRID_SIZE;
+    const ry = room.y * GRID_SIZE;
+    const rw = room.widthGrids * GRID_SIZE;
+    const rh = room.heightGrids * GRID_SIZE;
+
+    if (x >= rx - WALL_SNAP_DISTANCE && x <= rx + rw + WALL_SNAP_DISTANCE &&
+        y >= ry - WALL_SNAP_DISTANCE && y <= ry + rh + WALL_SNAP_DISTANCE) {
+      const distToLeft = Math.abs(x - rx);
+      const distToRight = Math.abs(x - (rx + rw));
+      const distToTop = Math.abs(y - ry);
+      const distToBottom = Math.abs(y - (ry + rh));
+
+      const minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
+
+      if (minDist <= WALL_SNAP_DISTANCE) {
+        if (minDist === distToLeft) {
+          const offsetAlongWall = Math.max(0, Math.min(rh, y - ry));
+          return {
+            roomId: room.id,
+            room,
+            wallOrientation: 'left',
+            wallX: rx,
+            wallY: ry,
+            wallWidth: WALL_THICKNESS,
+            wallHeight: rh,
+            offsetAlongWall,
+          };
+        } else if (minDist === distToRight) {
+          const offsetAlongWall = Math.max(0, Math.min(rh, y - ry));
+          return {
+            roomId: room.id,
+            room,
+            wallOrientation: 'right',
+            wallX: rx + rw - WALL_THICKNESS,
+            wallY: ry,
+            wallWidth: WALL_THICKNESS,
+            wallHeight: rh,
+            offsetAlongWall,
+          };
+        } else if (minDist === distToTop) {
+          const offsetAlongWall = Math.max(0, Math.min(rw, x - rx));
+          return {
+            roomId: room.id,
+            room,
+            wallOrientation: 'top',
+            wallX: rx,
+            wallY: ry,
+            wallWidth: rw,
+            wallHeight: WALL_THICKNESS,
+            offsetAlongWall,
+          };
+        } else {
+          const offsetAlongWall = Math.max(0, Math.min(rw, x - rx));
+          return {
+            roomId: room.id,
+            room,
+            wallOrientation: 'bottom',
+            wallX: rx,
+            wallY: ry + rh - WALL_THICKNESS,
+            wallWidth: rw,
+            wallHeight: WALL_THICKNESS,
+            offsetAlongWall,
+          };
+        }
+      }
+    }
+  }
+  return null;
+};
+
+export const snapWindowToWall = (
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  rooms: Room[]
+): {
+  valid: boolean;
+  roomId?: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  wallOrientation?: WallOrientation;
+  wallOffset?: number;
+  windowWidth?: number;
+  windowHeight?: number;
+} => {
+  const startWall = findWallAtPoint(startX, startY, rooms);
+  if (!startWall) return { valid: false };
+
+  const rx = startWall.room.x * GRID_SIZE;
+  const ry = startWall.room.y * GRID_SIZE;
+  const rw = startWall.room.widthGrids * GRID_SIZE;
+  const rh = startWall.room.heightGrids * GRID_SIZE;
+  const WALL_THICK = GRID_SIZE * 0.2;
+
+  if (startWall.wallOrientation === 'top' || startWall.wallOrientation === 'bottom') {
+    const minX = Math.min(startX, endX);
+    const maxX = Math.max(startX, endX);
+    const winX = Math.max(rx, minX);
+    const winW = Math.min(rx + rw, maxX) - winX;
+    if (winW < GRID_SIZE) return { valid: false };
+
+    const wallOffset = winX - rx;
+    const y = startWall.wallOrientation === 'top' ? ry : ry + rh - WALL_THICK;
+
+    return {
+      valid: true,
+      roomId: startWall.roomId,
+      x: winX,
+      y,
+      width: winW,
+      height: WALL_THICK,
+      wallOrientation: startWall.wallOrientation,
+      wallOffset,
+      windowWidth: winW,
+      windowHeight: GRID_SIZE * 2.5,
+    };
+  } else {
+    const minY = Math.min(startY, endY);
+    const maxY = Math.max(startY, endY);
+    const winY = Math.max(ry, minY);
+    const winH = Math.min(ry + rh, maxY) - winY;
+    if (winH < GRID_SIZE) return { valid: false };
+
+    const wallOffset = winY - ry;
+    const x = startWall.wallOrientation === 'left' ? rx : rx + rw - WALL_THICK;
+
+    return {
+      valid: true,
+      roomId: startWall.roomId,
+      x,
+      y: winY,
+      width: WALL_THICK,
+      height: winH,
+      wallOrientation: startWall.wallOrientation,
+      wallOffset,
+      windowWidth: winH,
+      windowHeight: GRID_SIZE * 2.5,
+    };
+  }
 };
