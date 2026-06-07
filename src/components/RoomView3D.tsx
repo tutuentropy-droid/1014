@@ -370,57 +370,76 @@ const createCurtainMesh = (curtain: CurtainItem, win: WindowItem) => {
     side: THREE.DoubleSide,
   });
 
-  const panels: Array<{ mesh: THREE.Mesh; originalX: number; isLeft: boolean }> = [];
+  const panels: Array<{ mesh: THREE.Mesh; originalX: number; originalZ: number; isLeft: boolean }> = [];
+
+  const isVerticalWall = win.wallOrientation === 'left' || win.wallOrientation === 'right';
 
   for (let i = 0; i < panelCount; i++) {
     const waveOffset = Math.sin(i * 0.8) * 0.015;
     const panelGeo = new THREE.PlaneGeometry(panelWidth * 0.95, curtainH);
     const panel = new THREE.Mesh(panelGeo, panelMat);
-    const zOffset = waveOffset;
 
     const isLeft = i < panelCount / 2;
-    const originalX = -curtainW / 2 + panelWidth / 2 + i * panelWidth;
-    panel.position.x = originalX;
-
-    if (win.wallOrientation === 'top' || win.wallOrientation === 'bottom') {
-      panel.position.z = zOffset + (win.wallOrientation === 'top' ? 0.06 : -0.06);
-      panel.rotation.y = Math.PI / 2;
-    } else {
-      panel.position.z = zOffset + (win.wallOrientation === 'left' ? 0.06 : -0.06);
-    }
+    const originalOffset = -curtainW / 2 + panelWidth / 2 + i * panelWidth;
 
     panel.position.y = windowBottom + curtainH / 2 - 0.02;
+
+    if (isVerticalWall) {
+      panel.rotation.y = Math.PI / 2;
+      panel.position.z = originalOffset;
+      panel.position.x = waveOffset;
+    } else {
+      panel.position.x = originalOffset;
+      panel.position.z = waveOffset;
+    }
+
     panel.castShadow = true;
     panel.receiveShadow = true;
     group.add(panel);
 
-    panels.push({ mesh: panel, originalX, isLeft });
+    panels.push({
+      mesh: panel,
+      originalX: panel.position.x,
+      originalZ: panel.position.z,
+      isLeft,
+    });
   }
 
   (group as unknown as {
-    panels: Array<{ mesh: THREE.Mesh; originalX: number; isLeft: boolean }>;
+    panels: Array<{ mesh: THREE.Mesh; originalX: number; originalZ: number; isLeft: boolean }>;
     progress: number;
     targetProgress: number;
     curtainW: number;
+    isVerticalWall: boolean;
   }).panels = panels;
   (group as unknown as {
-    panels: Array<{ mesh: THREE.Mesh; originalX: number; isLeft: boolean }>;
+    panels: Array<{ mesh: THREE.Mesh; originalX: number; originalZ: number; isLeft: boolean }>;
     progress: number;
     targetProgress: number;
     curtainW: number;
+    isVerticalWall: boolean;
   }).progress = curtain.isOpen ? 1 : 0;
   (group as unknown as {
-    panels: Array<{ mesh: THREE.Mesh; originalX: number; isLeft: boolean }>;
+    panels: Array<{ mesh: THREE.Mesh; originalX: number; originalZ: number; isLeft: boolean }>;
     progress: number;
     targetProgress: number;
     curtainW: number;
+    isVerticalWall: boolean;
   }).targetProgress = curtain.isOpen ? 1 : 0;
   (group as unknown as {
-    panels: Array<{ mesh: THREE.Mesh; originalX: number; isLeft: boolean }>;
+    panels: Array<{ mesh: THREE.Mesh; originalX: number; originalZ: number; isLeft: boolean }>;
     progress: number;
     targetProgress: number;
     curtainW: number;
+    isVerticalWall: boolean;
   }).curtainW = curtainW;
+  (group as unknown as {
+    panels: Array<{ mesh: THREE.Mesh; originalX: number; originalZ: number; isLeft: boolean }>;
+    progress: number;
+    targetProgress: number;
+    curtainW: number;
+    isVerticalWall: boolean;
+  }).isVerticalWall = isVerticalWall;
 
   const wx = win.x * SCALE;
   const wy = win.y * SCALE;
@@ -468,10 +487,11 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const furnitureMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
   const windowMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
   const curtainMeshesRef = useRef<Map<string, THREE.Group & {
-    panels?: Array<{ mesh: THREE.Mesh; originalX: number; isLeft: boolean }>;
+    panels?: Array<{ mesh: THREE.Mesh; originalX: number; originalZ: number; isLeft: boolean }>;
     progress?: number;
     targetProgress?: number;
     curtainW?: number;
+    isVerticalWall?: boolean;
   }>>(new Map());
   const gltfLoaderRef = useRef<GLTFLoader | null>(null);
   const frameRef = useRef<number>(0);
@@ -917,11 +937,20 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
             curtainGroup.progress += diff * Math.min(1, delta * 3);
             const p = curtainGroup.progress;
             const halfW = curtainGroup.curtainW / 2;
-            curtainGroup.panels.forEach(({ mesh, originalX, isLeft }) => {
-              if (isLeft) {
-                mesh.position.x = originalX - p * (originalX + halfW);
+            const isVertical = curtainGroup.isVerticalWall === true;
+            curtainGroup.panels.forEach(({ mesh, originalX, originalZ, isLeft }) => {
+              if (isVertical) {
+                if (isLeft) {
+                  mesh.position.z = originalZ - p * (originalZ + halfW);
+                } else {
+                  mesh.position.z = originalZ + p * (halfW - originalZ);
+                }
               } else {
-                mesh.position.x = originalX + p * (halfW - originalX);
+                if (isLeft) {
+                  mesh.position.x = originalX - p * (originalX + halfW);
+                } else {
+                  mesh.position.x = originalX + p * (halfW - originalX);
+                }
               }
             });
           }

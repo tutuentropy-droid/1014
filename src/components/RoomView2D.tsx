@@ -733,6 +733,8 @@ export const RoomView2D = () => {
                   const isWinSelected = selectedWindowId === win.id;
                   const curtain = room.curtains.find((c) => c.windowId === win.id);
                   const isCurtainSelected = curtain && selectedCurtainId === curtain.id;
+                  const isHWall = win.wallOrientation === 'top' || win.wallOrientation === 'bottom';
+                  const hitPad = 6;
                   return (
                     <div key={win.id}>
                       <div
@@ -743,15 +745,24 @@ export const RoomView2D = () => {
                             : 'hover:ring-2 hover:ring-sky-400'
                         }`}
                         style={{
-                          left: win.x - rx,
-                          top: win.y - ry,
-                          width: win.width,
-                          height: win.height,
-                          backgroundColor: 'rgba(135, 206, 250, 0.6)',
-                          border: '2px solid #4a90d9',
-                          borderRadius: 2,
+                          left: win.x - rx - (isHWall ? 0 : hitPad),
+                          top: win.y - ry - (isHWall ? hitPad : 0),
+                          width: win.width + (isHWall ? 0 : hitPad * 2),
+                          height: win.height + (isHWall ? hitPad * 2 : 0),
                         }}
                       >
+                        <div
+                          className="absolute inset-0 pointer-events-none"
+                          style={{
+                            left: isHWall ? 0 : hitPad,
+                            top: isHWall ? hitPad : 0,
+                            right: isHWall ? 0 : hitPad,
+                            bottom: isHWall ? hitPad : 0,
+                            backgroundColor: 'rgba(135, 206, 250, 0.6)',
+                            border: '2px solid #4a90d9',
+                            borderRadius: 2,
+                          }}
+                        />
                         <div
                           className="absolute whitespace-nowrap text-[9px] font-mono font-bold"
                           style={{
@@ -772,16 +783,16 @@ export const RoomView2D = () => {
                       {curtain && (
                         <div
                           onMouseDown={(e) => handleCurtainMouseDown(e, curtain)}
-                          className={`absolute cursor-pointer transition-all z-25 ${
+                          className={`absolute cursor-pointer transition-all z-30 ${
                             isCurtainSelected
                               ? 'ring-2 ring-violet-500 ring-offset-1'
                               : 'hover:ring-2 hover:ring-violet-400'
                           }`}
                           style={{
-                            left: win.x - rx + (win.wallOrientation === 'left' ? 4 : win.wallOrientation === 'right' ? -4 : 0),
-                            top: win.y - ry + (win.wallOrientation === 'top' ? 4 : win.wallOrientation === 'bottom' ? -4 : 0),
-                            width: win.wallOrientation === 'top' || win.wallOrientation === 'bottom' ? win.width : 4,
-                            height: win.wallOrientation === 'top' || win.wallOrientation === 'bottom' ? 4 : win.height,
+                            left: win.x - rx + (win.wallOrientation === 'left' ? 8 : win.wallOrientation === 'right' ? -8 : 0),
+                            top: win.y - ry + (win.wallOrientation === 'top' ? 8 : win.wallOrientation === 'bottom' ? -8 : 0),
+                            width: win.wallOrientation === 'top' || win.wallOrientation === 'bottom' ? win.width : 10,
+                            height: win.wallOrientation === 'top' || win.wallOrientation === 'bottom' ? 10 : win.height,
                             background: `repeating-linear-gradient(
                               ${win.wallOrientation === 'top' || win.wallOrientation === 'bottom' ? '90deg' : '0deg'},
                               rgba(139, 92, 246, 0.65),
