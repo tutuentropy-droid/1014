@@ -77,6 +77,13 @@ export const RoomView2D = () => {
   const panRef = useRef<PanState | null>(null);
   const [isPanning, setIsPanning] = useState(false);
 
+  // 重置缩放和平移到默认值
+  const resetView = useCallback(() => {
+    setScale(0.75);
+    setOffsetX(20);
+    setOffsetY(20);
+  }, []);
+
   const snapToGrid = (v: number) => Math.round(v / GRID_SIZE) * GRID_SIZE;
   const snapGrids = (v: number) => Math.round(v);
 
@@ -153,10 +160,13 @@ export const RoomView2D = () => {
         selectCurtain(null);
         setDrawMode('none');
       }
+      if (e.key === 'r' || e.key === 'R') {
+        resetView();
+      }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [selectedId, selectedWindowId, selectedCurtainId, removeFurniture, removeWindow, removeCurtain, selectFurniture, selectRoom, selectWindow, selectCurtain, setDrawMode]);
+  }, [selectedId, selectedWindowId, selectedCurtainId, removeFurniture, removeWindow, removeCurtain, selectFurniture, selectRoom, selectWindow, selectCurtain, setDrawMode, resetView]);
 
   const handleWheel = useCallback(
     (e: WheelEvent) => {
@@ -954,6 +964,12 @@ export const RoomView2D = () => {
         <div className="px-2.5 py-1 bg-white/90 backdrop-blur rounded-md text-[10px] text-stone-600 font-mono border border-stone-200 shadow-sm">
           缩放 {Math.round(scale * 100)}%
         </div>
+        <button
+          onClick={resetView}
+          className="px-2.5 py-1 bg-amber-500/90 hover:bg-amber-600 text-white rounded-md text-[10px] font-medium backdrop-blur border border-amber-400 shadow-sm transition-colors"
+        >
+          重置视图
+        </button>
         <div className="px-2.5 py-1 bg-white/90 backdrop-blur rounded-md text-[10px] text-stone-600 border border-stone-200 shadow-sm">
           {rooms.length} 个房间 · {rooms.reduce((s, r) => s + r.furniture.length, 0)} 件家具 · {rooms.reduce((s, r) => s + r.windows.length, 0)} 个窗户
         </div>

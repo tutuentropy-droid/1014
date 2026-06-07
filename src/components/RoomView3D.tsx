@@ -257,6 +257,12 @@ const createFallbackMesh = (w: number, d: number, h: number, color: number) => {
 
 const createWindowMesh = (win: WindowItem) => {
   const group = new THREE.Group();
+  // 添加自定义属性，用于射线检测时识别
+  (group as any).userData = {
+    type: 'window',
+    id: win.id,
+    roomId: win.roomId,
+  };
   const wx = win.x * SCALE;
   const wy = win.y * SCALE;
   const ww = win.width * SCALE;
@@ -359,6 +365,13 @@ type CurtainGroup = THREE.Group & {
 
 const createCurtainMesh = (curtain: CurtainItem, win: WindowItem) => {
   const group = new THREE.Group() as CurtainGroup;
+  // 添加自定义属性，用于射线检测时识别
+  (group as any).userData = {
+    type: 'curtain',
+    id: curtain.id,
+    roomId: curtain.roomId,
+    windowId: curtain.windowId,
+  };
   const winW = win.windowWidth * SCALE;
   const winH = win.windowHeight * SCALE;
   const windowBottom = 0.5;
@@ -468,6 +481,8 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const gltfLoaderRef = useRef<GLTFLoader | null>(null);
   const frameRef = useRef<number>(0);
   const initializedRef = useRef(false);
+  const raycasterRef = useRef<THREE.Raycaster | null>(null);
+  const mouseRef = useRef(new THREE.Vector2());
 
   const isFirstPersonRef = useRef(false);
   const yawRef = useRef(0);
@@ -483,6 +498,9 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const selectedWindowId = useDesignerStore((s) => s.selectedWindowId);
   const selectedCurtainId = useDesignerStore((s) => s.selectedCurtainId);
   const selectedRoomId = useDesignerStore((s) => s.selectedRoomId);
+  const selectFurniture = useDesignerStore((s) => s.selectFurniture);
+  const selectWindow = useDesignerStore((s) => s.selectWindow);
+  const selectCurtain = useDesignerStore((s) => s.selectCurtain);
   const getCatalogEntry = useDesignerStore((s) => s.getCatalogEntry);
   const getRoomById = useDesignerStore((s) => s.getRoomById);
 
@@ -591,6 +609,11 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         });
       }
       const buildAndRegister = (furnitureGroup: THREE.Group) => {
+        (furnitureGroup as any).userData = {
+          type: 'furniture',
+          id: item.id,
+          roomId: item.roomId,
+        };
         furnitureGroup.position.set(item.x * SCALE + w / 2, 0, item.y * SCALE + d / 2);
         furnitureMeshesRef.current.set(item.id, furnitureGroup);
         group.add(furnitureGroup);
@@ -709,9 +732,8 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
 
       const existing = curtainMeshesRef.current.get(curtain.id);
       if (existing) {
-        if (existing.targetProgress !== undefined) {
-          existing.targetProgress = curtain.isOpen ? 1 : 0;
-        }
+        // 更新目标进度，确保每次状态变化都能触发动画
+        existing.targetProgress = curtain.isOpen ? 1 : 0;
         return;
       }
 
@@ -872,6 +894,9 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     bg.position.set(CANVAS_W / 2, -0.01, CANVAS_H / 2);
     bg.receiveShadow = true;
     scene.add(bg);
+
+    // 初始化射线检测
+    raycasterRef.current = new THREE.Raycaster();
     const floorsGroup = new THREE.Group();
     scene.add(floorsGroup);
     floorsGroupRef.current = floorsGroup;
@@ -971,6 +996,65 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
       renderer.setSize(w, h);
     };
     window.addEventListener('resize', handleResize);
+
+    // 添加点击事件处理
+    const handleClick = (event: MouseEvent) => {
+      if (!renderer || !scene || !camera) return;
+      
+      // 如果是第一人称模式，不处理选择
+      if (isFirstPersonRef.current) return;
+
+      // 计算鼠标位置，转换为标准化设备坐标
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      // 更新射线
+      raycasterRef.current?.setFromCamera(mouseRef.current, camera);
+
+      // 收集所有可点击对象
+      const clickableObjects: THREE.Object3D[] = [];
+      
+      // 添加家具
+      furnitureMeshesRef.current.forEach((mesh) => clickableObjects.push(mesh));
+      
+      // 添加窗户
+      windowMeshesRef.current.forEach((mesh) => clickableObjects.push(mesh));
+      
+      // 添加窗帘
+      curtainMeshesRef.current.forEach((mesh) => clickableObjects.push(mesh));
+
+      // 检测相交
+      const intersects = raycasterRef.current?.intersectObjects(clickableObjects, true) || [];
+
+      if (intersects.length > 0) {
+        // 找到最近的有 userData 的对象
+        let selectedObject: THREE.Object3D | null = null;
+        for (const intersect of intersects) {
+          let obj: THREE.Object3D | null = intersect.object;
+          while (obj) {
+            if ((obj as any).userData && (obj as any).userData.type) {
+              selectedObject = obj;
+              break;
+            }
+            obj = obj.parent;
+          }
+          if (selectedObject) break;
+        }
+
+        if (selectedObject) {
+          const userData = (selectedObject as any).userData;
+          if (userData.type === 'furniture') {
+            selectFurniture(userData.id);
+          } else if (userData.type === 'window') {
+            selectWindow(userData.id);
+          } else if (userData.type === 'curtain') {
+            selectCurtain(userData.id);
+          }
+        }
+      }
+    };
+    renderer.domElement.addEventListener('click', handleClick);
     const handleKeyDown = (e: KeyboardEvent) => {
       keysRef.current[e.code] = true;
       if (e.code === 'KeyF') {
@@ -1037,6 +1121,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
       window.removeEventListener('keyup', handleKeyUp);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
+      renderer.domElement.removeEventListener('click', handleClick);
       cancelAnimationFrame(frameRef.current);
       controls.dispose();
       renderer.dispose();
@@ -1050,7 +1135,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         }
       });
     };
-  }, [checkCollision, rooms, selectedRoomId, getRoomById, CANVAS_W, CANVAS_H]);
+  }, [checkCollision, rooms, selectedRoomId, getRoomById, CANVAS_W, CANVAS_H, selectFurniture, selectWindow, selectCurtain]);
 
   useEffect(() => {
     if (!initializedRef.current) return;
