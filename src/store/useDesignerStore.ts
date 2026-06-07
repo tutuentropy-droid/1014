@@ -21,6 +21,7 @@ import {
   DEFAULT_FURNITURE_TYPES,
 } from '@/data/furnitureData';
 import { canPlaceFurnitureInRoom, canPlaceRoom, generateWallsForRooms, type GeneratedWall } from '@/utils/collision';
+import { generateSmartLayout } from '@/utils/smartLayout';
 
 interface PersistedState {
   rooms: Room[];
@@ -84,6 +85,9 @@ interface DesignState {
   renameRoom: (roomId: string, name: string) => void;
   moveRoom: (roomId: string, xGrids: number, yGrids: number) => boolean;
   resizeRoom: (roomId: string, widthGrids: number, heightGrids: number) => boolean;
+
+  clearRoomFurniture: (roomId: string) => void;
+  applySmartLayout: (roomId: string, mode: 'clear' | 'preserve') => number;
 
   syncRoomFurniture: () => void;
 }
@@ -689,5 +693,58 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
     });
     get().syncRoomFurniture();
     return true;
+  },
+
+  clearRoomFurniture: (roomId: string) => {
+    const rooms = get().rooms;
+    set({
+      rooms: rooms.map((r) =>
+        r.id === roomId ? { ...r, furniture: [] } : r
+      ),
+      selectedId: get().selectedId && rooms.find((r) => r.id === roomId)?.furniture.some((f) => f.id === get().selectedId)
+        ? null
+        : get().selectedId,
+    });
+    get().syncRoomFurniture();
+  },
+
+  applySmartLayout: (roomId: string, mode: 'clear' | 'preserve') => {
+    const rooms = get().rooms;
+    const room = rooms.find((r) => r.id === roomId);
+    if (!room) return 0;
+
+    const clearExisting = mode === 'clear';
+    const placements = generateSmartLayout(room, room.furniture, rooms, { clearExisting });
+
+    const newFurniture = clearExisting ? [] : [...room.furniture];
+    let placedCount = 0;
+
+    for (const p of placements) {
+      const catalog = get().getCatalogEntry(p.type);
+      const item: FurnitureItem = {
+        id: generateId('furniture'),
+        type: p.type,
+        x: p.x,
+        y: p.y,
+        width: catalog.width,
+        height: catalog.height,
+        color: catalog.color,
+        label: catalog.label,
+        roomId: room.id,
+      };
+      newFurniture.push(item);
+      placedCount++;
+    }
+
+    set({
+      rooms: rooms.map((r) =>
+        r.id === roomId ? { ...r, furniture: newFurniture } : r
+      ),
+      selectedRoomId: roomId,
+      currentRoomId: roomId,
+      selectedId: null,
+    });
+    get().syncRoomFurniture();
+    return placedCount;
   },
 }));

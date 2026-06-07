@@ -11,6 +11,7 @@ import {
   Maximize2,
   Image,
   Camera,
+  Wand2,
 } from 'lucide-react';
 import { FurniturePalette } from '@/components/FurniturePalette';
 import { RoomView2D } from '@/components/RoomView2D';
@@ -42,12 +43,15 @@ export default function Home() {
     updateFurnitureHeight,
     updateFurnitureColor,
     updateFurnitureLabel,
+    clearRoomFurniture,
+    applySmartLayout,
   } = useDesignerStore();
 
   const currentRoom = rooms.find((r) => r.id === currentRoomId);
 
   const [toast, setToast] = useState<string | null>(null);
   const [paletteDrag, setPaletteDrag] = useState<FurnitureType | null>(null);
+  const [showSmartLayoutDialog, setShowSmartLayoutDialog] = useState(false);
 
   const allFurniture = getAllFurniture();
   const autoWalls = getAutoWalls();
@@ -109,6 +113,24 @@ export default function Home() {
     }
     clearAll();
     showToast(`已清空所有房间的家具`);
+  };
+
+  const handleSmartLayoutAction = (mode: 'clear' | 'preserve') => {
+    if (!currentRoom) {
+      showToast('请先选择一个房间');
+      setShowSmartLayoutDialog(false);
+      return;
+    }
+    if (mode === 'clear') {
+      clearRoomFurniture(currentRoom.id);
+    }
+    const count = applySmartLayout(currentRoom.id, mode);
+    setShowSmartLayoutDialog(false);
+    if (count === 0) {
+      showToast(`「${currentRoom.name}」未能生成布局，请尝试更大的房间`);
+    } else {
+      showToast(`✓ 「${currentRoom.name}」已智能布局 ${count} 件家具`);
+    }
   };
 
   return (
@@ -227,6 +249,13 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-3 flex-wrap justify-center">
+              <button
+                onClick={() => setShowSmartLayoutDialog(true)}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white rounded-xl font-medium shadow-lg shadow-emerald-500/25 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+              >
+                <Wand2 className="w-4 h-4" />
+                智能布局
+              </button>
               <button
                 onClick={handleSave}
                 className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-stone-800 to-stone-700 hover:from-stone-700 hover:to-stone-600 text-white rounded-xl font-medium shadow-lg shadow-stone-700/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
@@ -407,6 +436,86 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {showSmartLayoutDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-[fadeIn_.2s_ease-out]">
+          <div className="bg-white rounded-2xl shadow-2xl w-[420px] overflow-hidden animate-[slideUp_.3s_ease-out]">
+            <div className="px-6 py-5 border-b border-stone-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow-md shadow-emerald-500/25">
+                  <Wand2 className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-stone-800 tracking-tight">智能布局</h3>
+                  <p className="text-xs text-stone-500 mt-0.5">
+                    当前房间：<span className="font-medium text-stone-700">{currentRoom?.name || '未选择'}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSmartLayoutDialog(false)}
+                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5">
+              <p className="text-sm text-stone-600 leading-relaxed mb-4">
+                根据房间类型和尺寸，自动为您生成合理的家具摆放方案。请选择布局方式：
+              </p>
+
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => handleSmartLayoutAction('clear')}
+                  className="group flex items-start gap-3 p-4 rounded-xl border-2 border-stone-200 hover:border-emerald-400 hover:bg-emerald-50/50 transition-all text-left"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center flex-shrink-0 group-hover:bg-rose-200 transition-colors">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="font-medium text-stone-800">清空后重新布局</div>
+                    <div className="text-xs text-stone-500 mt-0.5">
+                      删除当前房间所有家具，然后生成全新的布局方案
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => handleSmartLayoutAction('preserve')}
+                  className="group flex items-start gap-3 p-4 rounded-xl border-2 border-stone-200 hover:border-emerald-400 hover:bg-emerald-50/50 transition-all text-left"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-200 transition-colors">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="font-medium text-stone-800">保留现有家具</div>
+                    <div className="text-xs text-stone-500 mt-0.5">
+                      保留当前已放置的家具，仅补充智能推荐的缺失家具
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              <div className="mt-5 p-3 rounded-lg bg-stone-50 border border-stone-200">
+                <p className="text-xs text-stone-600 leading-relaxed">
+                  <span className="font-semibold text-stone-700">💡 布局规则：</span>
+                  床与衣柜靠墙放置，沙发与电视柜相对摆放，桌椅居中，植物点缀角落，每件家具之间自动留出至少 1 格过道空间。
+                </p>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-stone-50 border-t border-stone-100 flex justify-end gap-2">
+              <button
+                onClick={() => setShowSmartLayoutDialog(false)}
+                className="px-4 py-2 text-sm font-medium text-stone-600 hover:bg-stone-200 rounded-lg transition-colors"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-[fadeIn_.2s_ease-out,slideUp_.3s_ease-out]">
