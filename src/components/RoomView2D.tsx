@@ -734,25 +734,32 @@ export const RoomView2D = () => {
                   const curtain = room.curtains.find((c) => c.windowId === win.id);
                   const isCurtainSelected = curtain && selectedCurtainId === curtain.id;
                   const isHWall = win.wallOrientation === 'top' || win.wallOrientation === 'bottom';
-                  const hitPad = 6;
+                  const hitPad = 8;
                   return (
-                    <div key={win.id}>
+                    <div
+                      key={win.id}
+                      className="absolute"
+                      style={{
+                        left: win.x - rx - (isHWall ? 0 : hitPad),
+                        top: win.y - ry - (isHWall ? hitPad : 0),
+                        width: win.width + (isHWall ? 0 : hitPad * 2),
+                        height: win.height + (isHWall ? hitPad * 2 : 0),
+                        zIndex: 25,
+                      }}
+                    >
                       <div
                         onMouseDown={(e) => handleWindowMouseDown(e, win)}
-                        className={`absolute cursor-pointer transition-all z-20 ${
+                        className={`absolute inset-0 cursor-pointer transition-all ${
                           isWinSelected || isCurtainSelected
                             ? 'ring-2 ring-sky-500 ring-offset-1'
                             : 'hover:ring-2 hover:ring-sky-400'
                         }`}
                         style={{
-                          left: win.x - rx - (isHWall ? 0 : hitPad),
-                          top: win.y - ry - (isHWall ? hitPad : 0),
-                          width: win.width + (isHWall ? 0 : hitPad * 2),
-                          height: win.height + (isHWall ? hitPad * 2 : 0),
+                          backgroundColor: isWinSelected ? 'rgba(135, 206, 250, 0.15)' : 'rgba(135, 206, 250, 0.05)',
                         }}
                       >
                         <div
-                          className="absolute inset-0 pointer-events-none"
+                          className="absolute pointer-events-none"
                           style={{
                             left: isHWall ? 0 : hitPad,
                             top: isHWall ? hitPad : 0,
@@ -764,7 +771,7 @@ export const RoomView2D = () => {
                           }}
                         />
                         <div
-                          className="absolute whitespace-nowrap text-[9px] font-mono font-bold"
+                          className="absolute whitespace-nowrap text-[9px] font-mono font-bold pointer-events-none"
                           style={{
                             color: '#1e40af',
                             bottom: win.wallOrientation === 'top' ? -14 : 'auto',
@@ -783,22 +790,25 @@ export const RoomView2D = () => {
                       {curtain && (
                         <div
                           onMouseDown={(e) => handleCurtainMouseDown(e, curtain)}
-                          className={`absolute cursor-pointer transition-all z-30 ${
+                          className={`absolute cursor-pointer transition-all ${
                             isCurtainSelected
                               ? 'ring-2 ring-violet-500 ring-offset-1'
                               : 'hover:ring-2 hover:ring-violet-400'
                           }`}
                           style={{
-                            left: win.x - rx + (win.wallOrientation === 'left' ? 8 : win.wallOrientation === 'right' ? -8 : 0),
-                            top: win.y - ry + (win.wallOrientation === 'top' ? 8 : win.wallOrientation === 'bottom' ? -8 : 0),
-                            width: win.wallOrientation === 'top' || win.wallOrientation === 'bottom' ? win.width : 10,
-                            height: win.wallOrientation === 'top' || win.wallOrientation === 'bottom' ? 10 : win.height,
+                            left: isHWall ? 0 : (win.wallOrientation === 'left' ? 8 : win.wallOrientation === 'right' ? 'auto' : 0),
+                            right: isHWall ? 0 : (win.wallOrientation === 'right' ? 8 : 'auto'),
+                            top: isHWall ? (win.wallOrientation === 'top' ? 8 : 'auto') : 0,
+                            bottom: isHWall ? (win.wallOrientation === 'bottom' ? 8 : 'auto') : 0,
+                            width: isHWall ? '100%' : 12,
+                            height: isHWall ? 12 : '100%',
+                            zIndex: 35,
                             background: `repeating-linear-gradient(
-                              ${win.wallOrientation === 'top' || win.wallOrientation === 'bottom' ? '90deg' : '0deg'},
-                              rgba(139, 92, 246, 0.65),
-                              rgba(139, 92, 246, 0.65) 4px,
-                              rgba(167, 139, 250, 0.65) 4px,
-                              rgba(167, 139, 250, 0.65) 8px
+                              ${isHWall ? '90deg' : '0deg'},
+                              rgba(139, 92, 246, 0.7),
+                              rgba(139, 92, 246, 0.7) 4px,
+                              rgba(167, 139, 250, 0.7) 4px,
+                              rgba(167, 139, 250, 0.7) 8px
                             )`,
                             borderRadius: 2,
                             boxShadow: '0 1px 3px rgba(0,0,0,0.2)',

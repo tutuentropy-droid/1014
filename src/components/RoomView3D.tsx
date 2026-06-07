@@ -349,8 +349,16 @@ const createWindowMesh = (win: WindowItem) => {
   return group;
 };
 
+type CurtainGroup = THREE.Group & {
+  panels?: Array<{ mesh: THREE.Mesh; originalX: number; originalZ: number; isLeft: boolean }>;
+  progress?: number;
+  targetProgress?: number;
+  curtainW?: number;
+  isVerticalWall?: boolean;
+};
+
 const createCurtainMesh = (curtain: CurtainItem, win: WindowItem) => {
-  const group = new THREE.Group();
+  const group = new THREE.Group() as CurtainGroup;
   const winW = win.windowWidth * SCALE;
   const winH = win.windowHeight * SCALE;
   const windowBottom = 0.5;
@@ -405,41 +413,11 @@ const createCurtainMesh = (curtain: CurtainItem, win: WindowItem) => {
     });
   }
 
-  (group as unknown as {
-    panels: Array<{ mesh: THREE.Mesh; originalX: number; originalZ: number; isLeft: boolean }>;
-    progress: number;
-    targetProgress: number;
-    curtainW: number;
-    isVerticalWall: boolean;
-  }).panels = panels;
-  (group as unknown as {
-    panels: Array<{ mesh: THREE.Mesh; originalX: number; originalZ: number; isLeft: boolean }>;
-    progress: number;
-    targetProgress: number;
-    curtainW: number;
-    isVerticalWall: boolean;
-  }).progress = curtain.isOpen ? 1 : 0;
-  (group as unknown as {
-    panels: Array<{ mesh: THREE.Mesh; originalX: number; originalZ: number; isLeft: boolean }>;
-    progress: number;
-    targetProgress: number;
-    curtainW: number;
-    isVerticalWall: boolean;
-  }).targetProgress = curtain.isOpen ? 1 : 0;
-  (group as unknown as {
-    panels: Array<{ mesh: THREE.Mesh; originalX: number; originalZ: number; isLeft: boolean }>;
-    progress: number;
-    targetProgress: number;
-    curtainW: number;
-    isVerticalWall: boolean;
-  }).curtainW = curtainW;
-  (group as unknown as {
-    panels: Array<{ mesh: THREE.Mesh; originalX: number; originalZ: number; isLeft: boolean }>;
-    progress: number;
-    targetProgress: number;
-    curtainW: number;
-    isVerticalWall: boolean;
-  }).isVerticalWall = isVerticalWall;
+  group.panels = panels;
+  group.progress = curtain.isOpen ? 1 : 0;
+  group.targetProgress = curtain.isOpen ? 1 : 0;
+  group.curtainW = curtainW;
+  group.isVerticalWall = isVerticalWall;
 
   const wx = win.x * SCALE;
   const wy = win.y * SCALE;
@@ -486,13 +464,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const furnitureGroupRef = useRef<THREE.Group | null>(null);
   const furnitureMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
   const windowMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
-  const curtainMeshesRef = useRef<Map<string, THREE.Group & {
-    panels?: Array<{ mesh: THREE.Mesh; originalX: number; originalZ: number; isLeft: boolean }>;
-    progress?: number;
-    targetProgress?: number;
-    curtainW?: number;
-    isVerticalWall?: boolean;
-  }>>(new Map());
+  const curtainMeshesRef = useRef<Map<string, CurtainGroup>>(new Map());
   const gltfLoaderRef = useRef<GLTFLoader | null>(null);
   const frameRef = useRef<number>(0);
   const initializedRef = useRef(false);
@@ -513,11 +485,10 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const selectedRoomId = useDesignerStore((s) => s.selectedRoomId);
   const getCatalogEntry = useDesignerStore((s) => s.getCatalogEntry);
   const getRoomById = useDesignerStore((s) => s.getRoomById);
-  const getAllCurtains = useDesignerStore((s) => s.getAllCurtains);
 
   const allFurniture = rooms.flatMap((r) => r.furniture);
   const allWindows = rooms.flatMap((r) => r.windows);
-  const allCurtains = getAllCurtains();
+  const allCurtains = rooms.flatMap((r) => r.curtains);
 
   const CANVAS_W = CANVAS_WIDTH_GRIDS * GRID_SIZE * SCALE;
   const CANVAS_H = CANVAS_HEIGHT_GRIDS * GRID_SIZE * SCALE;
@@ -733,8 +704,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     (curtain: CurtainItem) => {
       const group = curtainsGroupRef.current;
       if (!group) return;
-      const roomsData = rooms;
-      const win = roomsData.flatMap((r) => r.windows).find((w) => w.id === curtain.windowId);
+      const win = allWindows.find((w) => w.id === curtain.windowId);
       if (!win) return;
 
       const existing = curtainMeshesRef.current.get(curtain.id);
@@ -749,7 +719,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
       curtainMeshesRef.current.set(curtain.id, curtainMesh);
       group.add(curtainMesh);
     },
-    [rooms]
+    [allWindows]
   );
 
   const clearGroup = (group: THREE.Group) => {
@@ -934,7 +904,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         ) {
           const diff = curtainGroup.targetProgress - curtainGroup.progress;
           if (Math.abs(diff) > 0.001) {
-            curtainGroup.progress += diff * Math.min(1, delta * 3);
+            curtainGroup.progress += diff * Math.min(1, delta * 4);
             const p = curtainGroup.progress;
             const halfW = curtainGroup.curtainW / 2;
             const isVertical = curtainGroup.isVerticalWall === true;
