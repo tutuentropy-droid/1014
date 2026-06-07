@@ -663,9 +663,9 @@ export default function Home() {
                 </div>
               )}
 
-              {(selectedFurniture || selectedWall) && (
+              {((selectedFurniture && selectedFurniture.type !== 'plant') || selectedWall) && (
                 <MaterialPanel
-                  selectedFurniture={selectedFurniture}
+                  selectedFurniture={selectedFurniture && selectedFurniture.type !== 'plant' ? selectedFurniture : null}
                   selectedWall={selectedWall}
                   onClose={() => {
                     if (selectedFurniture) selectFurniture(null);

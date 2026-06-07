@@ -19,7 +19,17 @@ export interface MaterialPreset {
   color: string;
   roughness: number;
   metalness: number;
-  pattern?: 'woodGrain' | 'fabricWeave' | 'metalBrushed' | 'stoneTile' | 'wallpaperPattern' | 'none';
+  pattern?:
+    | 'woodGrain'
+    | 'fabricWeave'
+    | 'metalBrushed'
+    | 'stoneTile'
+    | 'wallpaperFloral'
+    | 'wallpaperStripe'
+    | 'wallpaperDamask'
+    | 'wallpaperDot'
+    | 'wallpaperVine'
+    | 'none';
 }
 
 export interface FurnitureItem {

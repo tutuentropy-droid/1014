@@ -33,11 +33,17 @@ export const MATERIAL_PRESETS: MaterialPreset[] = [
   { id: 'stone-travertine', category: 'stone', label: '洞石米', color: '#d2b48c', roughness: 0.8, metalness: 0.02, pattern: 'stoneTile' },
   { id: 'stone-concrete', category: 'stone', label: '清水混凝土', color: '#808080', roughness: 0.95, metalness: 0.0, pattern: 'stoneTile' },
 
-  { id: 'wallpaper-floral', category: 'wallpaper', label: '碎花米', color: '#fdf5e6', roughness: 0.95, metalness: 0.0, pattern: 'wallpaperPattern' },
-  { id: 'wallpaper-stripe', category: 'wallpaper', label: '条纹蓝', color: '#b0c4de', roughness: 0.95, metalness: 0.0, pattern: 'wallpaperPattern' },
-  { id: 'wallpaper-geometric', category: 'wallpaper', label: '几何灰', color: '#d3d3d3', roughness: 0.95, metalness: 0.0, pattern: 'wallpaperPattern' },
+  { id: 'wallpaper-rose', category: 'wallpaper', label: '玫瑰粉', color: '#fce4ec', roughness: 0.95, metalness: 0.0, pattern: 'wallpaperFloral' },
+  { id: 'wallpaper-daisy', category: 'wallpaper', label: '雏菊米', color: '#fff8e1', roughness: 0.95, metalness: 0.0, pattern: 'wallpaperFloral' },
+  { id: 'wallpaper-lavender', category: 'wallpaper', label: '薰衣草紫', color: '#f3e5f5', roughness: 0.95, metalness: 0.0, pattern: 'wallpaperFloral' },
+  { id: 'wallpaper-stripe-blue', category: 'wallpaper', label: '竖条蓝', color: '#e3f2fd', roughness: 0.95, metalness: 0.0, pattern: 'wallpaperStripe' },
+  { id: 'wallpaper-stripe-pink', category: 'wallpaper', label: '竖条粉', color: '#fce4ec', roughness: 0.95, metalness: 0.0, pattern: 'wallpaperStripe' },
+  { id: 'wallpaper-damask-gold', category: 'wallpaper', label: '锦缎金', color: '#fff8e1', roughness: 0.95, metalness: 0.0, pattern: 'wallpaperDamask' },
+  { id: 'wallpaper-damask-silver', category: 'wallpaper', label: '锦缎银灰', color: '#eceff1', roughness: 0.95, metalness: 0.0, pattern: 'wallpaperDamask' },
+  { id: 'wallpaper-dot-cream', category: 'wallpaper', label: '波点米黄', color: '#fff8e1', roughness: 0.95, metalness: 0.0, pattern: 'wallpaperDot' },
+  { id: 'wallpaper-dot-sage', category: 'wallpaper', label: '波点鼠尾草', color: '#e8f5e9', roughness: 0.95, metalness: 0.0, pattern: 'wallpaperDot' },
+  { id: 'wallpaper-vine-green', category: 'wallpaper', label: '藤蔓绿', color: '#e8f5e9', roughness: 0.95, metalness: 0.0, pattern: 'wallpaperVine' },
   { id: 'wallpaper-plain', category: 'wallpaper', label: '素色米白', color: '#faf0e6', roughness: 0.95, metalness: 0.0, pattern: 'none' },
-  { id: 'wallpaper-mint', category: 'wallpaper', label: '薄荷绿', color: '#98fb98', roughness: 0.95, metalness: 0.0, pattern: 'wallpaperPattern' },
 ];
 
 export const DEFAULT_WALL_MATERIAL_ID = 'wallpaper-plain';
@@ -169,29 +175,150 @@ const generateStoneTile = (ctx: CanvasRenderingContext2D, w: number, h: number, 
   }
 };
 
-const generateWallpaperPattern = (ctx: CanvasRenderingContext2D, w: number, h: number, baseColor: string) => {
+const generateWallpaperFloral = (ctx: CanvasRenderingContext2D, w: number, h: number, baseColor: string) => {
   const { r, g, b } = hexToRgb(baseColor);
   ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, w, h);
   const darken = (v: number, amt: number) => Math.max(0, Math.min(255, v - Math.round(255 * amt)));
-  const patternColor = `rgba(${darken(r, 0.25)},${darken(g, 0.25)},${darken(b, 0.25)},0.5)`;
-  ctx.fillStyle = patternColor;
-  for (let y = 10; y < h; y += 24) {
-    for (let x = 10; x < w; x += 24) {
-      const offsetX = (y / 24) % 2 === 0 ? 0 : 12;
+  const lighten = (v: number, amt: number) => Math.max(0, Math.min(255, v + Math.round(255 * amt)));
+  const petalColor = `rgba(${darken(r, 0.3)},${darken(g, 0.1)},${darken(b, 0.35)},0.75)`;
+  const centerColor = `rgba(${lighten(r, 0.05)},${darken(g, 0.4)},${darken(b, 0.5)},0.9)`;
+  const leafColor = `rgba(${darken(r, 0.5)},${darken(g, 0.1)},${darken(b, 0.5)},0.6)`;
+  for (let y = 16; y < h; y += 44) {
+    for (let x = 16; x < w; x += 44) {
+      const offsetX = ((y / 44) | 0) % 2 === 0 ? 0 : 22;
       const cx = x + offsetX;
+      const cy = y;
+      ctx.fillStyle = leafColor;
       ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const angle = (i / 6) * Math.PI * 2;
-        const radius = i % 2 === 0 ? 5 : 2.5;
-        const px = cx + Math.cos(angle) * radius;
-        const py = y + Math.sin(angle) * radius;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
+      ctx.ellipse(cx - 12, cy + 8, 5, 3, -0.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(cx + 12, cy + 8, 5, 3, 0.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = petalColor;
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        const px = cx + Math.cos(angle) * 6;
+        const py = cy + Math.sin(angle) * 6;
+        ctx.beginPath();
+        ctx.ellipse(px, py, 4, 6, angle, 0, Math.PI * 2);
+        ctx.fill();
       }
-      ctx.closePath();
+      ctx.fillStyle = centerColor;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+};
+
+const generateWallpaperStripe = (ctx: CanvasRenderingContext2D, w: number, h: number, baseColor: string) => {
+  const { r, g, b } = hexToRgb(baseColor);
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, w, h);
+  const darken = (v: number, amt: number) => Math.max(0, Math.min(255, v - Math.round(255 * amt)));
+  const stripeColor = `rgba(${darken(r, 0.2)},${darken(g, 0.2)},${darken(b, 0.2)},0.45)`;
+  ctx.fillStyle = stripeColor;
+  const stripeW = 6;
+  const gap = 14;
+  for (let x = 0; x < w; x += stripeW + gap) {
+    ctx.fillRect(x, 0, stripeW, h);
+  }
+  const thinColor = `rgba(${darken(r, 0.4)},${darken(g, 0.4)},${darken(b, 0.4)},0.3)`;
+  ctx.fillStyle = thinColor;
+  for (let x = gap / 2; x < w; x += stripeW + gap) {
+    ctx.fillRect(x, 0, 1, h);
+  }
+};
+
+const generateWallpaperDamask = (ctx: CanvasRenderingContext2D, w: number, h: number, baseColor: string) => {
+  const { r, g, b } = hexToRgb(baseColor);
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, w, h);
+  const darken = (v: number, amt: number) => Math.max(0, Math.min(255, v - Math.round(255 * amt)));
+  const patColor = `rgba(${darken(r, 0.25)},${darken(g, 0.2)},${darken(b, 0.3)},0.55)`;
+  ctx.strokeStyle = patColor;
+  ctx.fillStyle = patColor;
+  ctx.lineWidth = 1.2;
+  for (let y = 20; y < h; y += 52) {
+    for (let x = 20; x < w; x += 52) {
+      const offsetX = ((y / 52) | 0) % 2 === 0 ? 0 : 26;
+      const cx = x + offsetX;
+      const cy = y;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 14);
+      ctx.bezierCurveTo(cx + 10, cy - 10, cx + 12, cy + 4, cx, cy + 14);
+      ctx.bezierCurveTo(cx - 12, cy + 4, cx - 10, cy - 10, cx, cy - 14);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx - 12, cy);
+      ctx.bezierCurveTo(cx - 8, cy - 10, cx + 8, cy - 10, cx + 12, cy);
+      ctx.bezierCurveTo(cx + 8, cy + 10, cx - 8, cy + 10, cx - 12, cy);
+      ctx.globalAlpha = 0.6;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = baseColor;
+      ctx.fill();
+      ctx.fillStyle = patColor;
+    }
+  }
+};
+
+const generateWallpaperDot = (ctx: CanvasRenderingContext2D, w: number, h: number, baseColor: string) => {
+  const { r, g, b } = hexToRgb(baseColor);
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, w, h);
+  const darken = (v: number, amt: number) => Math.max(0, Math.min(255, v - Math.round(255 * amt)));
+  const bigDot = `rgba(${darken(r, 0.35)},${darken(g, 0.35)},${darken(b, 0.35)},0.65)`;
+  const smallDot = `rgba(${darken(r, 0.2)},${darken(g, 0.2)},${darken(b, 0.2)},0.4)`;
+  const spacing = 20;
+  for (let y = spacing / 2; y < h; y += spacing) {
+    for (let x = spacing / 2; x < w; x += spacing) {
+      const offsetX = ((y / spacing) | 0) % 2 === 0 ? 0 : spacing / 2;
+      ctx.fillStyle = bigDot;
+      ctx.beginPath();
+      ctx.arc(x + offsetX, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = smallDot;
+      ctx.beginPath();
+      ctx.arc(x + offsetX + spacing / 2, y + spacing / 2, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+};
+
+const generateWallpaperVine = (ctx: CanvasRenderingContext2D, w: number, h: number, baseColor: string) => {
+  const { r, g, b } = hexToRgb(baseColor);
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, w, h);
+  const darken = (v: number, amt: number) => Math.max(0, Math.min(255, v - Math.round(255 * amt)));
+  const stemColor = `rgba(${darken(r, 0.45)},${darken(g, 0.15)},${darken(b, 0.5)},0.6)`;
+  const leafColor = `rgba(${darken(r, 0.55)},${darken(g, 0.05)},${darken(b, 0.6)},0.7)`;
+  ctx.strokeStyle = stemColor;
+  ctx.lineWidth = 1.5;
+  ctx.fillStyle = leafColor;
+  const colW = 36;
+  for (let x = colW / 2; x < w; x += colW) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    let dir = 1;
+    for (let y = 0; y < h; y += 18) {
+      ctx.bezierCurveTo(x + dir * 8, y + 6, x - dir * 8, y + 12, x, y + 18);
+      if (y % 36 === 0) {
+        ctx.save();
+        ctx.translate(x + dir * 6, y + 9);
+        ctx.rotate(dir * 0.5);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 7, 3.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      dir *= -1;
+    }
+    ctx.stroke();
   }
 };
 
@@ -213,8 +340,20 @@ export const generateTextureCanvas = (preset: MaterialPreset, size: number = 256
     case 'stoneTile':
       generateStoneTile(ctx, size, size, preset.color);
       break;
-    case 'wallpaperPattern':
-      generateWallpaperPattern(ctx, size, size, preset.color);
+    case 'wallpaperFloral':
+      generateWallpaperFloral(ctx, size, size, preset.color);
+      break;
+    case 'wallpaperStripe':
+      generateWallpaperStripe(ctx, size, size, preset.color);
+      break;
+    case 'wallpaperDamask':
+      generateWallpaperDamask(ctx, size, size, preset.color);
+      break;
+    case 'wallpaperDot':
+      generateWallpaperDot(ctx, size, size, preset.color);
+      break;
+    case 'wallpaperVine':
+      generateWallpaperVine(ctx, size, size, preset.color);
       break;
     default:
       ctx.fillStyle = preset.color;

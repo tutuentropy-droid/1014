@@ -18,8 +18,14 @@ interface MaterialPanelProps {
 
 export const MaterialPanel = ({ selectedFurniture, selectedWall, onClose, onToast }: MaterialPanelProps) => {
   const { updateFurnitureMaterial, updateWallMaterial, getRoomById } = useDesignerStore();
-  const [activeCategory, setActiveCategory] = useState<MaterialCategory>('wood');
+  const defaultCategory: MaterialCategory = selectedWall ? 'wallpaper' : 'wood';
+  const [activeCategory, setActiveCategory] = useState<MaterialCategory>(defaultCategory);
   const [applyToAllWalls, setApplyToAllWalls] = useState(false);
+
+  const visibleCategories = useMemo(() => {
+    if (selectedWall) return MATERIAL_CATEGORIES;
+    return MATERIAL_CATEGORIES.filter((c) => c.key !== 'wallpaper');
+  }, [selectedWall]);
 
   const presets = useMemo(() => getMaterialsByCategory(activeCategory), [activeCategory]);
 
@@ -94,8 +100,8 @@ export const MaterialPanel = ({ selectedFurniture, selectedWall, onClose, onToas
 
       <div className="flex flex-col gap-2">
         <span className="text-[11px] font-medium text-stone-500 uppercase tracking-wider">材质分类</span>
-        <div className="grid grid-cols-5 gap-1.5">
-          {MATERIAL_CATEGORIES.map((cat) => (
+        <div className={`grid gap-1.5 ${visibleCategories.length === 4 ? 'grid-cols-4' : 'grid-cols-5'}`}>
+          {visibleCategories.map((cat) => (
             <button
               key={cat.key}
               onClick={() => setActiveCategory(cat.key)}
