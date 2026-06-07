@@ -9,13 +9,17 @@ interface RoomTabsProps {
 
 export const RoomTabs = ({ onToast }: RoomTabsProps) => {
   const {
-    rooms,
+    floors,
+    currentFloor,
     currentRoomId,
     switchRoom,
     addRoom,
     removeRoom,
     renameRoom,
   } = useDesignerStore();
+
+  const currentFloorData = floors.find((f) => f.level === currentFloor);
+  const rooms = currentFloorData?.rooms ?? [];
 
   const [showAddInput, setShowAddInput] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');

@@ -2,13 +2,13 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { FurnitureIcon } from './FurnitureIcon';
 import { useDesignerStore } from '@/store/useDesignerStore';
 import { GRID_SIZE, CANVAS_WIDTH_GRIDS, CANVAS_HEIGHT_GRIDS } from '@/data/furnitureData';
-import type { FurnitureItem, FurnitureType, Room, WindowItem, CurtainItem } from '@/types/furniture';
+import type { FurnitureItem, FurnitureType, Room, WindowItem, CurtainItem, StaircaseArea } from '@/types/furniture';
 import { canPlaceFurnitureInRoom, generateWallsForRooms, canPlaceRoom, snapWindowToWall, findWallAtPoint } from '@/utils/collision';
 
 type RoomResizeHandle = 'nw' | 'ne' | 'sw' | 'se';
 
 interface DragState {
-  type: 'move-furniture' | 'new-furniture' | 'move-room' | 'resize-room' | 'draw-window';
+  type: 'move-furniture' | 'new-furniture' | 'move-room' | 'resize-room' | 'draw-window' | 'draw-staircase';
   furnitureType?: FurnitureType;
   id?: string;
   offsetX: number;
@@ -35,9 +35,22 @@ interface PanState {
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 2;
 
+const overlapsStaircase = (
+  x: number, y: number, width: number, height: number,
+  staircase: StaircaseArea | null
+): boolean => {
+  if (!staircase) return false;
+  const sx = staircase.x * GRID_SIZE;
+  const sy = staircase.y * GRID_SIZE;
+  const sw = staircase.widthGrids * GRID_SIZE;
+  const sh = staircase.heightGrids * GRID_SIZE;
+  return x < sx + sw && x + width > sx && y < sy + sh && y + height > sy;
+};
+
 export const RoomView2D = () => {
   const {
-    rooms,
+    floors,
+    currentFloor,
     selectedId,
     selectedRoomId,
     selectedWindowId,
@@ -61,7 +74,13 @@ export const RoomView2D = () => {
     removeCurtain,
     toggleCurtain,
     selectCurtain,
+    getStaircaseArea,
+    setStaircaseArea,
   } = useDesignerStore();
+
+  const currentFloorData = floors.find((f) => f.level === currentFloor);
+  const rooms = currentFloorData?.rooms ?? [];
+  const staircaseArea = getStaircaseArea();
 
   const canvasWidth = getCanvasWidth();
   const canvasHeight = getCanvasHeight();
@@ -285,12 +304,15 @@ export const RoomView2D = () => {
       const finalY = snapToGrid(y - drag.offsetY);
       const allFurniture = rooms.flatMap((r) => r.furniture);
       const autoWalls = generateWallsForRooms(rooms) as unknown as { x: number; y: number; width: number; height: number; id: string }[];
-      const valid = canPlaceFurnitureInRoom(
+      let valid = canPlaceFurnitureInRoom(
         { x: finalX, y: finalY, width: drag.width, height: drag.height },
         room,
         allFurniture,
         autoWalls
       );
+      if (valid && overlapsStaircase(finalX, finalY, drag.width, drag.height, staircaseArea)) {
+        valid = false;
+      }
       setGhostPos({ x: finalX, y: finalY, valid, width: drag.width, height: drag.height });
     }
   };
@@ -401,13 +423,16 @@ export const RoomView2D = () => {
         const finalY = snapToGrid(y - drag.offsetY);
         const allFurniture = rooms.flatMap((r) => r.furniture);
         const autoWalls = generateWallsForRooms(rooms) as unknown as { x: number; y: number; width: number; height: number; id: string }[];
-        const valid = canPlaceFurnitureInRoom(
+        let valid = canPlaceFurnitureInRoom(
           { x: finalX, y: finalY, width: drag.width, height: drag.height },
           room,
           allFurniture,
           autoWalls,
           drag.id
         );
+        if (valid && overlapsStaircase(finalX, finalY, drag.width, drag.height, staircaseArea)) {
+          valid = false;
+        }
         setGhostPos({ x: finalX, y: finalY, valid, width: drag.width, height: drag.height });
       } else if (drag.type === 'move-room') {
         const finalXGrids = snapGrids((x - drag.offsetX) / GRID_SIZE);
@@ -867,6 +892,26 @@ export const RoomView2D = () => {
             </div>
           );
         })}
+
+        {staircaseArea && (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: staircaseArea.x * GRID_SIZE,
+              top: staircaseArea.y * GRID_SIZE,
+              width: staircaseArea.widthGrids * GRID_SIZE,
+              height: staircaseArea.heightGrids * GRID_SIZE,
+              background: 'repeating-linear-gradient(45deg, rgba(251, 146, 60, 0.35), rgba(251, 146, 60, 0.35) 6px, rgba(251, 146, 60, 0.15) 6px, rgba(251, 146, 60, 0.15) 12px)',
+              border: '2px dashed #ea580c',
+              borderRadius: 6,
+              zIndex: 5,
+            }}
+          >
+            <div className="absolute top-1 left-2 text-xs font-bold text-orange-700 select-none pointer-events-none">
+              楼梯间 · {(currentFloor + 1)}F
+            </div>
+          </div>
+        )}
 
         {autoWalls.map((wall, idx) => (
           <div

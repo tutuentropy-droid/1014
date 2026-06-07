@@ -14,6 +14,9 @@ import {
   Wand2,
   Square,
   Blinds,
+  Building2,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { FurniturePalette } from '@/components/FurniturePalette';
 import { RoomView2D } from '@/components/RoomView2D';
@@ -25,6 +28,7 @@ import {
   GRID_SIZE,
   MIN_FURNITURE_GRIDS,
   MAX_FURNITURE_GRIDS,
+  MAX_FLOORS,
 } from '@/data/furnitureData';
 
 export default function Home() {
@@ -40,8 +44,14 @@ export default function Home() {
     setDrawMode,
     getAllWindows,
     getAllCurtains,
-    rooms,
+    floors,
+    currentFloor,
     currentRoomId,
+    seeThroughMode,
+    setSeeThroughMode,
+    switchFloor,
+    getStaircaseArea,
+    setStaircaseArea,
     saveLayout,
     clearAll,
     loadLayout,
@@ -60,7 +70,12 @@ export default function Home() {
     applySmartLayout,
   } = useDesignerStore();
 
+  const currentFloorData = floors.find((f) => f.level === currentFloor);
+  const rooms = currentFloorData?.rooms ?? [];
   const currentRoom = rooms.find((r) => r.id === currentRoomId);
+
+  const totalFurniture = floors.reduce((sum, f) => sum + f.rooms.reduce((s, r) => s + r.furniture.length, 0), 0);
+  const totalRooms = floors.reduce((sum, f) => sum + f.rooms.length, 0);
 
   const [toast, setToast] = useState<string | null>(null);
   const [paletteDrag, setPaletteDrag] = useState<FurnitureType | null>(null);
@@ -85,8 +100,7 @@ export default function Home() {
 
   const handleSave = () => {
     saveLayout();
-    const totalFurniture = rooms.reduce((sum, r) => sum + r.furniture.length, 0);
-    showToast(`✓ 已保存 ${rooms.length} 个房间（共 ${totalFurniture} 件家具，${autoWalls.length} 面自动墙体）`);
+    showToast(`✓ 已保存 ${floors.length} 层楼（共 ${totalRooms} 个房间，${totalFurniture} 件家具）`);
   };
 
   const handleExport2D = () => {
@@ -153,17 +167,17 @@ export default function Home() {
   return (
     <div className="min-h-screen py-8 px-6">
       <div className="max-w-[1400px] mx-auto">
-        <header className="mb-8 flex items-center justify-between flex-wrap gap-4">
+        <header className="mb-6 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/25">
-              <Sparkles className="w-6 h-6 text-white" strokeWidth={2.2} />
+              <Building2 className="w-6 h-6 text-white" strokeWidth={2.2} />
             </div>
             <div>
               <h1 className="font-display text-3xl font-bold text-stone-800 tracking-tight leading-none">
                 Interior Studio
               </h1>
               <p className="text-sm text-stone-500 mt-1">
-                多房间户型设计工具 · 共 {rooms.length} 个房间，当前：
+                多层楼房设计工具 · 共 {totalRooms} 个房间 / {totalFurniture} 件家具，当前 {currentFloor + 1}F：
                 <span className="font-semibold text-amber-600">
                   {currentRoom?.name || '—'}
                 </span>
@@ -172,6 +186,38 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1 p-1 bg-white rounded-xl shadow-sm border border-stone-200">
+              {Array.from({ length: MAX_FLOORS }).map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => switchFloor(i)}
+                  className={`flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    currentFloor === i
+                      ? 'bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-md shadow-amber-500/25'
+                      : 'text-stone-600 hover:bg-stone-50'
+                  }`}
+                >
+                  <Building2 className="w-3.5 h-3.5" />
+                  {i + 1}F
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2 p-1 bg-white rounded-xl shadow-sm border border-stone-200">
+              <button
+                onClick={() => setSeeThroughMode(!seeThroughMode)}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  seeThroughMode
+                    ? 'bg-gradient-to-r from-cyan-500 to-sky-600 text-white shadow-md shadow-sky-500/25'
+                    : 'text-stone-600 hover:bg-stone-50'
+                }`}
+                title={seeThroughMode ? '关闭透视模式' : '开启透视模式（隐藏上层楼板）'}
+              >
+                {seeThroughMode ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                透视模式
+              </button>
+            </div>
+
             <div className="flex items-center gap-2 p-1 bg-white rounded-xl shadow-sm border border-stone-200">
               <button
                 onClick={() => setViewMode('2d')}
@@ -330,15 +376,18 @@ export default function Home() {
                 清空所有家具
               </button>
               <div className="ml-2 px-3 py-2 bg-white/60 backdrop-blur rounded-xl border border-stone-200 text-sm text-stone-600">
-                <span className="font-semibold text-amber-700">{rooms.length}</span> 个房间
+                <span className="font-semibold text-orange-700">{currentFloor + 1}F</span> · 
+                <span className="font-semibold text-amber-700 ml-1">{rooms.length}</span> 房间
                 {' · '}
-                <span className="font-semibold text-stone-800">{allFurniture.length}</span> 件家具
+                <span className="font-semibold text-stone-800">{allFurniture.length}</span> 家具
                 {' · '}
-                <span className="font-semibold text-sky-700">{allWindows.length}</span> 个窗户
+                <span className="font-semibold text-sky-700">{allWindows.length}</span> 窗户
                 {' · '}
-                <span className="font-semibold text-violet-700">{allCurtains.length}</span> 个窗帘
+                <span className="font-semibold text-violet-700">{allCurtains.length}</span> 窗帘
                 {' · '}
-                <span className="font-semibold text-stone-500">{autoWalls.length}</span> 面自动墙
+                <span className="font-semibold text-stone-500">{autoWalls.length}</span> 墙
+                {' · '}
+                <span className="text-stone-400">总计 {totalRooms} 房间 / {totalFurniture} 家具</span>
               </div>
             </div>
           </main>

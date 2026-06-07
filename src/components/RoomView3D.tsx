@@ -3,9 +3,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useDesignerStore } from '@/store/useDesignerStore';
-import type { FurnitureItem, Room, WindowItem, CurtainItem } from '@/types/furniture';
-import { GRID_SIZE, CANVAS_WIDTH_GRIDS, CANVAS_HEIGHT_GRIDS } from '@/data/furnitureData';
-import { generateWallsForRooms } from '@/utils/collision';
+import type { FurnitureItem, Room, WindowItem, CurtainItem, Floor, StaircaseArea } from '@/types/furniture';
+import { GRID_SIZE, CANVAS_WIDTH_GRIDS, CANVAS_HEIGHT_GRIDS, FLOOR_HEIGHT, SLAB_THICKNESS } from '@/data/furnitureData';
+
 
 const SCALE = 0.01;
 const WALL_HEIGHT = 2.8;
@@ -30,6 +30,8 @@ const hexToThreeColorLighten = (hex: string, amount: number = 0.3): number => {
   const b = Math.min(255, (c & 0xff) + Math.round(255 * amount));
   return (r << 16) | (g << 8) | b;
 };
+
+const floorYOffset = (level: number): number => level * FLOOR_HEIGHT;
 
 const createBedMesh = (w: number, d: number, h: number, color: number) => {
   const bedGroup = new THREE.Group();
@@ -255,9 +257,8 @@ const createFallbackMesh = (w: number, d: number, h: number, color: number) => {
   return g;
 };
 
-const createWindowMesh = (win: WindowItem) => {
+const createWindowMesh = (win: WindowItem, baseY: number) => {
   const group = new THREE.Group();
-  // 添加自定义属性，用于射线检测时识别
   (group as any).userData = {
     type: 'window',
     id: win.id,
@@ -350,7 +351,7 @@ const createWindowMesh = (win: WindowItem) => {
       break;
   }
 
-  group.position.set(posX, windowBottom + winH / 2, posZ);
+  group.position.set(posX, baseY + windowBottom + winH / 2, posZ);
 
   return group;
 };
@@ -363,9 +364,8 @@ type CurtainGroup = THREE.Group & {
   isVerticalWall?: boolean;
 };
 
-const createCurtainMesh = (curtain: CurtainItem, win: WindowItem) => {
+const createCurtainMesh = (curtain: CurtainItem, win: WindowItem, baseY: number) => {
   const group = new THREE.Group() as CurtainGroup;
-  // 添加自定义属性，用于射线检测时识别
   (group as any).userData = {
     type: 'curtain',
     id: curtain.id,
@@ -455,7 +455,7 @@ const createCurtainMesh = (curtain: CurtainItem, win: WindowItem) => {
       break;
   }
 
-  group.position.set(posX, 0, posZ);
+  group.position.set(posX, baseY, posZ);
 
   return group;
 };
@@ -470,7 +470,10 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const buildingGroupRef = useRef<THREE.Group | null>(null);
   const floorsGroupRef = useRef<THREE.Group | null>(null);
+  const slabsGroupRef = useRef<THREE.Group | null>(null);
+  const staircaseGroupRef = useRef<THREE.Group | null>(null);
   const wallsGroupRef = useRef<THREE.Group | null>(null);
   const windowsGroupRef = useRef<THREE.Group | null>(null);
   const curtainsGroupRef = useRef<THREE.Group | null>(null);
@@ -478,6 +481,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const furnitureMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
   const windowMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
   const curtainMeshesRef = useRef<Map<string, CurtainGroup>>(new Map());
+  const slabMeshesRef = useRef<Map<number, THREE.Mesh>>(new Map());
   const gltfLoaderRef = useRef<GLTFLoader | null>(null);
   const frameRef = useRef<number>(0);
   const initializedRef = useRef(false);
@@ -488,12 +492,15 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const yawRef = useRef(0);
   const pitchRef = useRef(0);
   const playerPosRef = useRef(new THREE.Vector3(0, PLAYER_HEIGHT, 0));
+  const firstPersonFloorRef = useRef(0);
   const keysRef = useRef<Record<string, boolean>>({});
   const defaultCameraPosRef = useRef(new THREE.Vector3());
   const defaultCameraTargetRef = useRef(new THREE.Vector3());
   const [isFirstPerson, setIsFirstPerson] = useState(false);
 
-  const rooms = useDesignerStore((s) => s.rooms);
+  const floors = useDesignerStore((s) => s.floors);
+  const currentFloor = useDesignerStore((s) => s.currentFloor);
+  const seeThroughMode = useDesignerStore((s) => s.seeThroughMode);
   const selectedId = useDesignerStore((s) => s.selectedId);
   const selectedWindowId = useDesignerStore((s) => s.selectedWindowId);
   const selectedCurtainId = useDesignerStore((s) => s.selectedCurtainId);
@@ -503,13 +510,20 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const selectCurtain = useDesignerStore((s) => s.selectCurtain);
   const getCatalogEntry = useDesignerStore((s) => s.getCatalogEntry);
   const getRoomById = useDesignerStore((s) => s.getRoomById);
+  const findFloorForRoomId = useDesignerStore((s) => s.findFloorForRoomId);
+  const getAllFurnitureForFloor = useDesignerStore((s) => s.getAllFurnitureForFloor);
+  const getAutoWallsForFloor = useDesignerStore((s) => s.getAutoWallsForFloor);
+  const getAllWindowsForFloor = useDesignerStore((s) => s.getAllWindowsForFloor);
+  const getAllCurtainsForFloor = useDesignerStore((s) => s.getAllCurtainsForFloor);
+  const getStaircaseAreaForFloor = useDesignerStore((s) => s.getStaircaseAreaForFloor);
 
-  const allFurniture = rooms.flatMap((r) => r.furniture);
-  const allWindows = rooms.flatMap((r) => r.windows);
-  const allCurtains = rooms.flatMap((r) => r.curtains);
+  const allFurniture = floors.flatMap((f) => getAllFurnitureForFloor(f.level));
+  const allWindows = floors.flatMap((f) => getAllWindowsForFloor(f.level));
+  const allCurtains = floors.flatMap((f) => getAllCurtainsForFloor(f.level));
 
   const CANVAS_W = CANVAS_WIDTH_GRIDS * GRID_SIZE * SCALE;
   const CANVAS_H = CANVAS_HEIGHT_GRIDS * GRID_SIZE * SCALE;
+  const BUILDING_HEIGHT = floors.length * FLOOR_HEIGHT;
 
   const captureScreenshot = useCallback(() => {
     const renderer = rendererRef.current;
@@ -526,7 +540,12 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     captureScreenshot;
 
   const checkCollision = useCallback(
-    (pos: THREE.Vector3): boolean => {
+    (pos: THREE.Vector3, floorLevel: number): boolean => {
+      const floor = floors.find((f) => f.level === floorLevel);
+      if (!floor) return true;
+      const rooms = floor.rooms;
+      const baseY = floorYOffset(floorLevel);
+
       for (const room of rooms) {
         const rx = room.x * GRID_SIZE * SCALE;
         const ry = room.y * GRID_SIZE * SCALE;
@@ -543,7 +562,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
           const dz = pos.z - closestZ;
           if (dx * dx + dz * dz < PLAYER_RADIUS * PLAYER_RADIUS) return true;
         }
-        const autoWalls = generateWallsForRooms(rooms);
+        const autoWalls = getAutoWallsForFloor(floorLevel);
         for (const wall of autoWalls) {
           const wx = wall.x * SCALE;
           const wy = wall.y * SCALE;
@@ -582,11 +601,11 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
       }
       return false;
     },
-    [rooms]
+    [floors, getAutoWallsForFloor]
   );
 
   const updateFurnitureMesh = useCallback(
-    (item: FurnitureItem) => {
+    (item: FurnitureItem, floorLevel: number) => {
       const group = furnitureGroupRef.current;
       if (!group) return;
       const catalog = getCatalogEntry(item.type);
@@ -608,13 +627,15 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
           }
         });
       }
+      const baseY = floorYOffset(floorLevel);
       const buildAndRegister = (furnitureGroup: THREE.Group) => {
         (furnitureGroup as any).userData = {
           type: 'furniture',
           id: item.id,
           roomId: item.roomId,
+          floorLevel,
         };
-        furnitureGroup.position.set(item.x * SCALE + w / 2, 0, item.y * SCALE + d / 2);
+        furnitureGroup.position.set(item.x * SCALE + w / 2, baseY, item.y * SCALE + d / 2);
         furnitureMeshesRef.current.set(item.id, furnitureGroup);
         group.add(furnitureGroup);
       };
@@ -655,7 +676,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
                 child.receiveShadow = true;
               }
             });
-            gltfGroup.position.set(item.x * SCALE + w / 2, 0, item.y * SCALE + d / 2);
+            gltfGroup.position.set(item.x * SCALE + w / 2, baseY, item.y * SCALE + d / 2);
             furnitureMeshesRef.current.set(item.id, gltfGroup);
             group.add(gltfGroup);
           },
@@ -699,7 +720,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   );
 
   const updateWindowMesh = useCallback(
-    (win: WindowItem) => {
+    (win: WindowItem, floorLevel: number) => {
       const group = windowsGroupRef.current;
       if (!group) return;
       const existing = windowMeshesRef.current.get(win.id);
@@ -716,7 +737,8 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
           }
         });
       }
-      const winMesh = createWindowMesh(win);
+      const baseY = floorYOffset(floorLevel);
+      const winMesh = createWindowMesh(win, baseY);
       windowMeshesRef.current.set(win.id, winMesh);
       group.add(winMesh);
     },
@@ -724,7 +746,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   );
 
   const updateCurtainMesh = useCallback(
-    (curtain: CurtainItem) => {
+    (curtain: CurtainItem, floorLevel: number) => {
       const group = curtainsGroupRef.current;
       if (!group) return;
       const win = allWindows.find((w) => w.id === curtain.windowId);
@@ -732,12 +754,12 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
 
       const existing = curtainMeshesRef.current.get(curtain.id);
       if (existing) {
-        // 更新目标进度，确保每次状态变化都能触发动画
         existing.targetProgress = curtain.isOpen ? 1 : 0;
         return;
       }
 
-      const curtainMesh = createCurtainMesh(curtain, win);
+      const baseY = floorYOffset(floorLevel);
+      const curtainMesh = createCurtainMesh(curtain, win, baseY);
       curtainMeshesRef.current.set(curtain.id, curtainMesh);
       group.add(curtainMesh);
     },
@@ -763,64 +785,166 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     const group = floorsGroupRef.current;
     if (!group) return;
     clearGroup(group);
-    rooms.forEach((room: Room) => {
-      const rx = room.x * GRID_SIZE * SCALE;
-      const ry = room.y * GRID_SIZE * SCALE;
-      const rw = room.widthGrids * GRID_SIZE * SCALE;
-      const rh = room.heightGrids * GRID_SIZE * SCALE;
-      const floorColor = hexToThreeColorLighten(room.color, 0.15);
-      const floorMat = new THREE.MeshStandardMaterial({
-        color: floorColor,
-        roughness: 0.6,
-        metalness: 0.05,
+    floors.forEach((floor: Floor) => {
+      const baseY = floorYOffset(floor.level);
+      floor.rooms.forEach((room: Room) => {
+        const rx = room.x * GRID_SIZE * SCALE;
+        const ry = room.y * GRID_SIZE * SCALE;
+        const rw = room.widthGrids * GRID_SIZE * SCALE;
+        const rh = room.heightGrids * GRID_SIZE * SCALE;
+        const floorColor = hexToThreeColorLighten(room.color, 0.15);
+        const floorMat = new THREE.MeshStandardMaterial({
+          color: floorColor,
+          roughness: 0.6,
+          metalness: 0.05,
+        });
+        const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(rw, rh), floorMat);
+        floorMesh.rotation.x = -Math.PI / 2;
+        floorMesh.position.set(rx + rw / 2, baseY, ry + rh / 2);
+        floorMesh.receiveShadow = true;
+        group.add(floorMesh);
       });
-      const floor = new THREE.Mesh(new THREE.PlaneGeometry(rw, rh), floorMat);
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.set(rx + rw / 2, 0, ry + rh / 2);
-      floor.receiveShadow = true;
-      group.add(floor);
     });
-  }, [rooms]);
+  }, [floors]);
+
+  const buildSlabs = useCallback(() => {
+    const group = slabsGroupRef.current;
+    if (!group) return;
+    clearGroup(group);
+    slabMeshesRef.current.clear();
+
+    const slabMat = new THREE.MeshStandardMaterial({
+      color: 0x887766,
+      roughness: 0.85,
+      metalness: 0.02,
+    });
+    const slabW = CANVAS_W;
+    const slabD = CANVAS_H;
+
+    for (let i = 0; i <= floors.length; i++) {
+      const slabGeo = new THREE.BoxGeometry(slabW, SLAB_THICKNESS, slabD);
+      const slab = new THREE.Mesh(slabGeo, slabMat.clone());
+      const slabY = i * FLOOR_HEIGHT - SLAB_THICKNESS / 2;
+      slab.position.set(slabW / 2, slabY, slabD / 2);
+      slab.receiveShadow = true;
+      slab.castShadow = true;
+      slab.userData = { type: 'slab', floorLevel: i };
+      group.add(slab);
+      slabMeshesRef.current.set(i, slab);
+    }
+  }, [floors.length, CANVAS_W, CANVAS_H]);
+
+  const buildStaircase = useCallback(() => {
+    const group = staircaseGroupRef.current;
+    if (!group) return;
+    clearGroup(group);
+
+    const stairMat = new THREE.MeshStandardMaterial({
+      color: 0x6b5344,
+      roughness: 0.75,
+      metalness: 0.05,
+    });
+
+    floors.forEach((floor) => {
+      if (!floor.staircaseArea) return;
+      const { x, y, widthGrids, heightGrids } = floor.staircaseArea;
+      const baseY = floorYOffset(floor.level);
+      const sx = x * GRID_SIZE * SCALE;
+      const sz = y * GRID_SIZE * SCALE;
+      const sw = widthGrids * GRID_SIZE * SCALE;
+      const sd = heightGrids * GRID_SIZE * SCALE;
+
+      const stairH = WALL_HEIGHT;
+      const stairGeo = new THREE.BoxGeometry(sw, stairH, sd);
+      const stair = new THREE.Mesh(stairGeo, stairMat.clone());
+      stair.position.set(sx + sw / 2, baseY + stairH / 2, sz + sd / 2);
+      stair.castShadow = true;
+      stair.receiveShadow = true;
+      (stair as any).userData = { type: 'staircase', floorLevel: floor.level };
+
+      const stepCount = Math.floor(FLOOR_HEIGHT / 0.18);
+      for (let s = 0; s < stepCount; s++) {
+        const stepH = 0.18;
+        const stepGeo = new THREE.BoxGeometry(sw * 0.6, stepH * 0.95, sd * 0.9);
+        const stepMat = new THREE.MeshStandardMaterial({
+          color: 0x8b6f47,
+          roughness: 0.7,
+          metalness: 0.05,
+        });
+        const step = new THREE.Mesh(stepGeo, stepMat);
+        const t = s / (stepCount - 1);
+        const stepY = baseY + t * (FLOOR_HEIGHT - stepH);
+        const stepZ = sz + sd * 0.1 + t * sd * 0.8;
+        step.position.set(sx + sw / 2, stepY + stepH / 2, stepZ);
+        step.castShadow = true;
+        step.receiveShadow = true;
+        group.add(step);
+      }
+
+      group.add(stair);
+    });
+  }, [floors]);
+
+  const updateSeeThroughVisibility = useCallback(() => {
+    slabMeshesRef.current.forEach((slab, level) => {
+      if (!seeThroughMode) {
+        slab.visible = true;
+        (slab.material as THREE.MeshStandardMaterial).opacity = 1;
+        (slab.material as THREE.MeshStandardMaterial).transparent = false;
+      } else {
+        if (level > currentFloor + 1) {
+          slab.visible = false;
+        } else if (level === currentFloor + 1) {
+          slab.visible = true;
+          (slab.material as THREE.MeshStandardMaterial).opacity = 0.15;
+          (slab.material as THREE.MeshStandardMaterial).transparent = true;
+        } else {
+          slab.visible = true;
+          (slab.material as THREE.MeshStandardMaterial).opacity = 1;
+          (slab.material as THREE.MeshStandardMaterial).transparent = false;
+        }
+      }
+    });
+  }, [seeThroughMode, currentFloor]);
 
   const buildWalls = useCallback(() => {
     const group = wallsGroupRef.current;
     if (!group) return;
     clearGroup(group);
-    const autoWalls = generateWallsForRooms(rooms);
     const wallMat = new THREE.MeshStandardMaterial({
       color: 0xd9cfc2,
       roughness: 0.85,
       metalness: 0.02,
     });
-    autoWalls.forEach((wall) => {
-      const wx = wall.x * SCALE;
-      const wy = wall.y * SCALE;
-      const ww = Math.max(wall.width * SCALE, 0.04);
-      const wh = Math.max(wall.height * SCALE, 0.04);
-      let wallMesh: THREE.Mesh;
-      if (ww > wh) {
-        wallMesh = new THREE.Mesh(new THREE.BoxGeometry(ww, WALL_HEIGHT, wh), wallMat);
-      } else {
-        wallMesh = new THREE.Mesh(new THREE.BoxGeometry(ww, WALL_HEIGHT, wh), wallMat);
-      }
-      wallMesh.position.set(wx + ww / 2, WALL_HEIGHT / 2, wy + wh / 2);
-      wallMesh.castShadow = true;
-      wallMesh.receiveShadow = true;
-      group.add(wallMesh);
+    floors.forEach((floor) => {
+      const baseY = floorYOffset(floor.level);
+      const autoWalls = getAutoWallsForFloor(floor.level);
+      autoWalls.forEach((wall) => {
+        const wx = wall.x * SCALE;
+        const wy = wall.y * SCALE;
+        const ww = Math.max(wall.width * SCALE, 0.04);
+        const wh = Math.max(wall.height * SCALE, 0.04);
+        const wallMesh = new THREE.Mesh(new THREE.BoxGeometry(ww, WALL_HEIGHT, wh), wallMat);
+        wallMesh.position.set(wx + ww / 2, baseY + WALL_HEIGHT / 2, wy + wh / 2);
+        wallMesh.castShadow = true;
+        wallMesh.receiveShadow = true;
+        wallMesh.userData = { type: 'wall', floorLevel: floor.level };
+        group.add(wallMesh);
+      });
     });
-  }, [rooms]);
+  }, [floors, getAutoWallsForFloor]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const scene = new THREE.Scene();
 
-    const skyGeo = new THREE.SphereGeometry(80, 32, 32);
+    const skyGeo = new THREE.SphereGeometry(200, 32, 32);
     const skyMat = new THREE.ShaderMaterial({
       uniforms: {
         topColor: { value: new THREE.Color(0x87ceeb) },
         bottomColor: { value: new THREE.Color(0xe0f6ff) },
-        offset: { value: 20 },
+        offset: { value: 30 },
         exponent: { value: 0.6 },
       },
       vertexShader: `
@@ -828,7 +952,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         void main() {
           vec4 worldPosition = modelMatrix * vec4(position, 1.0);
           vWorldPosition = worldPosition.xyz;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * modelMatrix * vec4(position, 1.0);
         }
       `,
       fragmentShader: `
@@ -847,9 +971,9 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     const sky = new THREE.Mesh(skyGeo, skyMat);
     scene.add(sky);
 
-    scene.fog = new THREE.Fog(0xc9e8f7, 20, 70);
+    scene.fog = new THREE.Fog(0xc9e8f7, 30, 120);
     sceneRef.current = scene;
-    const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 200);
+    const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 400);
     cameraRef.current = camera;
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -864,26 +988,26 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.minDistance = 3;
-    controls.maxDistance = 50;
-    controls.maxPolarAngle = Math.PI / 2.1;
+    controls.maxDistance = 80;
+    controls.maxPolarAngle = Math.PI / 2.05;
     controlsRef.current = controls;
     const ambient = new THREE.AmbientLight(0xffffff, 0.55);
     scene.add(ambient);
     const hemi = new THREE.HemisphereLight(0x87ceeb, 0xd9c7a8, 0.5);
     scene.add(hemi);
     const dir = new THREE.DirectionalLight(0xfff5e1, 1.0);
-    dir.position.set(CANVAS_W * 0.3, 20, CANVAS_H * 0.3);
+    dir.position.set(CANVAS_W * 0.3, 30 + BUILDING_HEIGHT, CANVAS_H * 0.3);
     dir.castShadow = true;
     dir.shadow.mapSize.set(2048, 2048);
-    dir.shadow.camera.left = -CANVAS_W;
-    dir.shadow.camera.right = CANVAS_W * 2;
-    dir.shadow.camera.top = CANVAS_H * 2;
-    dir.shadow.camera.bottom = -CANVAS_H;
+    dir.shadow.camera.left = -CANVAS_W * 2;
+    dir.shadow.camera.right = CANVAS_W * 3;
+    dir.shadow.camera.top = CANVAS_H * 3;
+    dir.shadow.camera.bottom = -CANVAS_H * 2;
     dir.shadow.camera.near = 0.5;
-    dir.shadow.camera.far = 50;
+    dir.shadow.camera.far = 200;
     dir.shadow.bias = -0.0005;
     scene.add(dir);
-    const bgGeo = new THREE.PlaneGeometry(CANVAS_W * 1.5, CANVAS_H * 1.5);
+    const bgGeo = new THREE.PlaneGeometry(CANVAS_W * 3, CANVAS_H * 3);
     const bgMat = new THREE.MeshStandardMaterial({
       color: 0x7cb342,
       roughness: 0.95,
@@ -895,23 +1019,40 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     bg.receiveShadow = true;
     scene.add(bg);
 
-    // 初始化射线检测
     raycasterRef.current = new THREE.Raycaster();
+
+    const buildingGroup = new THREE.Group();
+    scene.add(buildingGroup);
+    buildingGroupRef.current = buildingGroup;
+
     const floorsGroup = new THREE.Group();
-    scene.add(floorsGroup);
+    buildingGroup.add(floorsGroup);
     floorsGroupRef.current = floorsGroup;
+
+    const slabsGroup = new THREE.Group();
+    buildingGroup.add(slabsGroup);
+    slabsGroupRef.current = slabsGroup;
+
+    const staircaseGroup = new THREE.Group();
+    buildingGroup.add(staircaseGroup);
+    staircaseGroupRef.current = staircaseGroup;
+
     const wallsGroup = new THREE.Group();
-    scene.add(wallsGroup);
+    buildingGroup.add(wallsGroup);
     wallsGroupRef.current = wallsGroup;
+
     const windowsGroup = new THREE.Group();
-    scene.add(windowsGroup);
+    buildingGroup.add(windowsGroup);
     windowsGroupRef.current = windowsGroup;
+
     const curtainsGroup = new THREE.Group();
-    scene.add(curtainsGroup);
+    buildingGroup.add(curtainsGroup);
     curtainsGroupRef.current = curtainsGroup;
+
     const furnitureGroup = new THREE.Group();
-    scene.add(furnitureGroup);
+    buildingGroup.add(furnitureGroup);
     furnitureGroupRef.current = furnitureGroup;
+
     gltfLoaderRef.current = new GLTFLoader();
     let lastTime = performance.now();
     const animate = () => {
@@ -963,15 +1104,15 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         if (move.lengthSq() > 0) {
           move.normalize().multiplyScalar(MOVE_SPEED * delta);
           const newPos = playerPosRef.current.clone().add(move);
-          if (!checkCollision(newPos)) {
+          if (!checkCollision(newPos, firstPersonFloorRef.current)) {
             playerPosRef.current.copy(newPos);
           } else {
             const tryX = playerPosRef.current.clone();
             tryX.x = newPos.x;
-            if (!checkCollision(tryX)) playerPosRef.current.x = newPos.x;
+            if (!checkCollision(tryX, firstPersonFloorRef.current)) playerPosRef.current.x = newPos.x;
             const tryZ = playerPosRef.current.clone();
             tryZ.z = newPos.z;
-            if (!checkCollision(tryZ)) playerPosRef.current.z = newPos.z;
+            if (!checkCollision(tryZ, firstPersonFloorRef.current)) playerPosRef.current.z = newPos.z;
           }
         }
         camera.position.copy(playerPosRef.current);
@@ -997,38 +1138,28 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     };
     window.addEventListener('resize', handleResize);
 
-    // 添加点击事件处理
     const handleClick = (event: MouseEvent) => {
       if (!renderer || !scene || !camera) return;
       
-      // 如果是第一人称模式，不处理选择
       if (isFirstPersonRef.current) return;
 
-      // 计算鼠标位置，转换为标准化设备坐标
       const rect = renderer.domElement.getBoundingClientRect();
       mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-      // 更新射线
       raycasterRef.current?.setFromCamera(mouseRef.current, camera);
 
-      // 收集所有可点击对象
       const clickableObjects: THREE.Object3D[] = [];
       
-      // 添加家具
       furnitureMeshesRef.current.forEach((mesh) => clickableObjects.push(mesh));
       
-      // 添加窗户
       windowMeshesRef.current.forEach((mesh) => clickableObjects.push(mesh));
       
-      // 添加窗帘
       curtainMeshesRef.current.forEach((mesh) => clickableObjects.push(mesh));
 
-      // 检测相交
       const intersects = raycasterRef.current?.intersectObjects(clickableObjects, true) || [];
 
       if (intersects.length > 0) {
-        // 找到最近的有 userData 的对象
         let selectedObject: THREE.Object3D | null = null;
         for (const intersect of intersects) {
           let obj: THREE.Object3D | null = intersect.object;
@@ -1061,13 +1192,25 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         if (!isFirstPersonRef.current) {
           const room = selectedRoomId ? getRoomById(selectedRoomId) : undefined;
           let startRoom: Room | undefined = room;
-          if (!startRoom && rooms.length > 0) startRoom = rooms[0];
+          let startFloor = currentFloor;
+          if (room) {
+            const f = findFloorForRoomId(room.id);
+            if (f !== undefined) startFloor = f;
+          }
+          if (!startRoom) {
+            const currentFloorData = floors.find((f) => f.level === currentFloor);
+            if (currentFloorData && currentFloorData.rooms.length > 0) {
+              startRoom = currentFloorData.rooms[0];
+            }
+          }
           if (startRoom) {
+            const baseY = floorYOffset(startFloor);
             const rx = startRoom.x * GRID_SIZE * SCALE;
             const ry = startRoom.y * GRID_SIZE * SCALE;
             const rw = startRoom.widthGrids * GRID_SIZE * SCALE;
             const rh = startRoom.heightGrids * GRID_SIZE * SCALE;
-            playerPosRef.current.set(rx + rw / 2, PLAYER_HEIGHT, ry + rh / 2);
+            playerPosRef.current.set(rx + rw / 2, baseY + PLAYER_HEIGHT, ry + rh / 2);
+            firstPersonFloorRef.current = startFloor;
             yawRef.current = 0;
             pitchRef.current = 0;
             if (controls) {
@@ -1135,21 +1278,29 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         }
       });
     };
-  }, [checkCollision, rooms, selectedRoomId, getRoomById, CANVAS_W, CANVAS_H, selectFurniture, selectWindow, selectCurtain]);
+  }, [checkCollision, floors, selectedRoomId, getRoomById, CANVAS_W, CANVAS_H, BUILDING_HEIGHT, selectFurniture, selectWindow, selectCurtain, findFloorForRoomId, currentFloor]);
 
   useEffect(() => {
     if (!initializedRef.current) return;
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (camera && controls) {
-      camera.position.set(CANVAS_W * 0.6, 18, CANVAS_H * 1.1);
+      const centerY = BUILDING_HEIGHT / 2;
+      camera.position.set(CANVAS_W * 0.8, centerY + 18, CANVAS_H * 1.6);
       defaultCameraPosRef.current.copy(camera.position);
-      controls.target.set(CANVAS_W / 2, 0, CANVAS_H / 2);
+      controls.target.set(CANVAS_W / 2, centerY, CANVAS_H / 2);
       defaultCameraTargetRef.current.copy(controls.target);
     }
     buildFloors();
+    buildSlabs();
+    buildStaircase();
     buildWalls();
-  }, [buildFloors, buildWalls, CANVAS_W, CANVAS_H]);
+    updateSeeThroughVisibility();
+  }, [buildFloors, buildSlabs, buildStaircase, buildWalls, updateSeeThroughVisibility, CANVAS_W, CANVAS_H, BUILDING_HEIGHT]);
+
+  useEffect(() => {
+    updateSeeThroughVisibility();
+  }, [updateSeeThroughVisibility]);
 
   useEffect(() => {
     const group = furnitureGroupRef.current;
@@ -1175,8 +1326,13 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         furnitureMeshesRef.current.delete(id);
       }
     });
-    allFurniture.forEach((item) => updateFurnitureMesh(item));
-  }, [allFurniture, updateFurnitureMesh]);
+    allFurniture.forEach((item) => {
+      const floorIdx = findFloorForRoomId(item.roomId);
+      if (floorIdx !== undefined) {
+        updateFurnitureMesh(item, floorIdx);
+      }
+    });
+  }, [allFurniture, updateFurnitureMesh, findFloorForRoomId]);
 
   useEffect(() => {
     const group = windowsGroupRef.current;
@@ -1202,8 +1358,13 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         windowMeshesRef.current.delete(id);
       }
     });
-    allWindows.forEach((win) => updateWindowMesh(win));
-  }, [allWindows, updateWindowMesh]);
+    allWindows.forEach((win) => {
+      const floorIdx = findFloorForRoomId(win.roomId);
+      if (floorIdx !== undefined) {
+        updateWindowMesh(win, floorIdx);
+      }
+    });
+  }, [allWindows, updateWindowMesh, findFloorForRoomId]);
 
   useEffect(() => {
     const group = curtainsGroupRef.current;
@@ -1229,8 +1390,13 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         curtainMeshesRef.current.delete(id);
       }
     });
-    allCurtains.forEach((curtain) => updateCurtainMesh(curtain));
-  }, [allCurtains, updateCurtainMesh]);
+    allCurtains.forEach((curtain) => {
+      const floorIdx = findFloorForRoomId(curtain.roomId);
+      if (floorIdx !== undefined) {
+        updateCurtainMesh(curtain, floorIdx);
+      }
+    });
+  }, [allCurtains, updateCurtainMesh, findFloorForRoomId]);
 
   useEffect(() => {
     furnitureMeshesRef.current.forEach((group, id) => {
@@ -1292,11 +1458,16 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     >
       <div className="absolute top-3 left-3 z-10 flex items-center gap-2 flex-wrap">
         <div className="px-2.5 py-1 bg-white/85 backdrop-blur rounded-md text-[10px] text-stone-600 font-mono border border-stone-200 shadow-sm">
-          3D 户型视图 · 拖拽旋转 / 滚轮缩放
+          3D 多层户型视图 · 共 {floors.length} 层 · 拖拽旋转 / 滚轮缩放
         </div>
+        {seeThroughMode && (
+          <div className="px-2.5 py-1 bg-cyan-500/90 text-white rounded-md text-[10px] font-medium backdrop-blur shadow-sm">
+            透视模式 · 隐藏 {currentFloor + 1}F 以上楼板
+          </div>
+        )}
         {isFirstPerson && (
           <div className="px-2.5 py-1 bg-emerald-500/90 text-white rounded-md text-[10px] font-medium backdrop-blur shadow-sm">
-            第一人称漫游 · WASD 移动 · 鼠标视角 · 再按 F 退出
+            第一人称漫游 · {firstPersonFloorRef.current + 1}F · WASD 移动 · 再按 F 退出
           </div>
         )}
         {!isFirstPerson && (

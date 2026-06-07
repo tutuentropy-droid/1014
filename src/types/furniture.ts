@@ -81,3 +81,17 @@ export interface Room {
   roomWidthGrids: number;
   roomHeightGrids: number;
 }
+
+export interface StaircaseArea {
+  x: number;
+  y: number;
+  widthGrids: number;
+  heightGrids: number;
+}
+
+export interface Floor {
+  id: string;
+  level: number;
+  rooms: Room[];
+  staircaseArea: StaircaseArea | null;
+}

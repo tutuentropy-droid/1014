@@ -10,6 +10,10 @@ export const MAX_ROOM_GRIDS = 30;
 export const CANVAS_WIDTH_GRIDS = 60;
 export const CANVAS_HEIGHT_GRIDS = 45;
 
+export const MAX_FLOORS = 3;
+export const FLOOR_HEIGHT = 3.0;
+export const SLAB_THICKNESS = 0.2;
+
 export const DEFAULT_FURNITURE_WIDTH_GRIDS = 2;
 export const DEFAULT_FURNITURE_HEIGHT_GRIDS = 2;
 export const MIN_FURNITURE_GRIDS = 1;
