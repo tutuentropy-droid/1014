@@ -808,9 +808,17 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
       return { ...f, x: fx, y: fy };
     });
 
+    const deltaX = (xGrids - room.x) * GRID_SIZE;
+    const deltaY = (yGrids - room.y) * GRID_SIZE;
+    const adjustedWindows = room.windows.map((w) => ({
+      ...w,
+      x: w.x + deltaX,
+      y: w.y + deltaY,
+    }));
+
     set({
       rooms: rooms.map((r) =>
-        r.id === roomId ? { ...r, x: xGrids, y: yGrids, furniture: adjustedFurniture } : r
+        r.id === roomId ? { ...r, x: xGrids, y: yGrids, furniture: adjustedFurniture, windows: adjustedWindows } : r
       ),
     });
     get().syncRoomFurniture();
@@ -837,14 +845,37 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
       return f.x >= rx && f.y >= ry && f.x + f.width <= rx + rw && f.y + f.height <= ry + rh;
     });
 
+    const adjustedWindows = room.windows.filter((win) => {
+      return (
+        win.x >= rx - 0.01 &&
+        win.y >= ry - 0.01 &&
+        win.x + win.width <= rx + rw + 0.01 &&
+        win.y + win.height <= ry + rh + 0.01
+      );
+    });
+
+    const validWindowIds = new Set(adjustedWindows.map((w) => w.id));
+    const adjustedCurtains = room.curtains.filter((c) => validWindowIds.has(c.windowId));
+
     set({
       rooms: rooms.map((r) =>
         r.id === roomId
-          ? { ...r, widthGrids: w, heightGrids: h, roomWidthGrids: w, roomHeightGrids: h, furniture: adjustedFurniture }
+          ? {
+              ...r,
+              widthGrids: w,
+              heightGrids: h,
+              roomWidthGrids: w,
+              roomHeightGrids: h,
+              furniture: adjustedFurniture,
+              windows: adjustedWindows,
+              curtains: adjustedCurtains,
+            }
           : r
       ),
       roomWidthGrids: get().currentRoomId === roomId ? w : get().roomWidthGrids,
       roomHeightGrids: get().currentRoomId === roomId ? h : get().roomHeightGrids,
+      selectedWindowId:
+        get().selectedWindowId && !validWindowIds.has(get().selectedWindowId!) ? null : get().selectedWindowId,
     });
     get().syncRoomFurniture();
     return true;

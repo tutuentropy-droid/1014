@@ -327,6 +327,23 @@ const createWindowMesh = (win: WindowItem) => {
 
   let posX = wx + ww / 2;
   let posZ = wy + wh / 2;
+
+  const WALL_OFFSET = 0.025;
+  switch (win.wallOrientation) {
+    case 'left':
+      posX += WALL_OFFSET;
+      break;
+    case 'right':
+      posX -= WALL_OFFSET;
+      break;
+    case 'top':
+      posZ += WALL_OFFSET;
+      break;
+    case 'bottom':
+      posZ -= WALL_OFFSET;
+      break;
+  }
+
   group.position.set(posX, windowBottom + winH / 2, posZ);
 
   return group;
@@ -366,10 +383,10 @@ const createCurtainMesh = (curtain: CurtainItem, win: WindowItem) => {
     panel.position.x = originalX;
 
     if (win.wallOrientation === 'top' || win.wallOrientation === 'bottom') {
-      panel.position.z = zOffset + (win.wallOrientation === 'top' ? -0.03 : 0.03);
+      panel.position.z = zOffset + (win.wallOrientation === 'top' ? 0.06 : -0.06);
       panel.rotation.y = Math.PI / 2;
     } else {
-      panel.position.z = zOffset + (win.wallOrientation === 'left' ? -0.03 : 0.03);
+      panel.position.z = zOffset + (win.wallOrientation === 'left' ? 0.06 : -0.06);
     }
 
     panel.position.y = windowBottom + curtainH / 2 - 0.02;
@@ -409,7 +426,26 @@ const createCurtainMesh = (curtain: CurtainItem, win: WindowItem) => {
   const wy = win.y * SCALE;
   const ww = win.width * SCALE;
   const wh = win.height * SCALE;
-  group.position.set(wx + ww / 2, 0, wy + wh / 2);
+
+  let posX = wx + ww / 2;
+  let posZ = wy + wh / 2;
+  const CURTAIN_OFFSET = 0.08;
+  switch (win.wallOrientation) {
+    case 'left':
+      posX += CURTAIN_OFFSET;
+      break;
+    case 'right':
+      posX -= CURTAIN_OFFSET;
+      break;
+    case 'top':
+      posZ += CURTAIN_OFFSET;
+      break;
+    case 'bottom':
+      posZ -= CURTAIN_OFFSET;
+      break;
+  }
+
+  group.position.set(posX, 0, posZ);
 
   return group;
 };
