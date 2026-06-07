@@ -3,8 +3,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useDesignerStore } from '@/store/useDesignerStore';
-import type { FurnitureItem, Room, WindowItem, CurtainItem, Floor, StaircaseArea } from '@/types/furniture';
+import type { FurnitureItem, Room, WindowItem, CurtainItem, Floor, StaircaseArea, WallOrientation, MaterialPreset } from '@/types/furniture';
 import { GRID_SIZE, CANVAS_WIDTH_GRIDS, CANVAS_HEIGHT_GRIDS, FLOOR_HEIGHT, SLAB_THICKNESS } from '@/data/furnitureData';
+import { generateTextureCanvas, getMaterialById, DEFAULT_WALL_MATERIAL_ID } from '@/data/materialData';
 
 
 const SCALE = 0.01;
@@ -32,6 +33,40 @@ const hexToThreeColorLighten = (hex: string, amount: number = 0.3): number => {
 };
 
 const floorYOffset = (level: number): number => level * FLOOR_HEIGHT;
+
+const textureCache = new Map<string, THREE.Texture>();
+
+const getOrCreateTexture = (preset: MaterialPreset): THREE.Texture | null => {
+  if (!preset.pattern || preset.pattern === 'none') return null;
+  const cacheKey = preset.id;
+  if (textureCache.has(cacheKey)) {
+    return textureCache.get(cacheKey)!;
+  }
+  try {
+    const canvas = generateTextureCanvas(preset, 256);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(2, 2);
+    texture.anisotropy = 4;
+    texture.needsUpdate = true;
+    textureCache.set(cacheKey, texture);
+    return texture;
+  } catch {
+    return null;
+  }
+};
+
+const createThreeMaterial = (preset: MaterialPreset): THREE.MeshStandardMaterial => {
+  const color = hexToThreeColor(preset.color);
+  const map = getOrCreateTexture(preset);
+  return new THREE.MeshStandardMaterial({
+    color,
+    roughness: preset.roughness,
+    metalness: preset.metalness,
+    map: map ?? undefined,
+  });
+};
 
 const createBedMesh = (w: number, d: number, h: number, color: number) => {
   const bedGroup = new THREE.Group();
@@ -482,6 +517,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const windowMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
   const curtainMeshesRef = useRef<Map<string, CurtainGroup>>(new Map());
   const slabMeshesRef = useRef<Map<number, THREE.Mesh>>(new Map());
+  const wallMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const gltfLoaderRef = useRef<GLTFLoader | null>(null);
   const frameRef = useRef<number>(0);
   const initializedRef = useRef(false);
@@ -504,10 +540,12 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const selectedId = useDesignerStore((s) => s.selectedId);
   const selectedWindowId = useDesignerStore((s) => s.selectedWindowId);
   const selectedCurtainId = useDesignerStore((s) => s.selectedCurtainId);
+  const selectedWall = useDesignerStore((s) => s.selectedWall);
   const selectedRoomId = useDesignerStore((s) => s.selectedRoomId);
   const selectFurniture = useDesignerStore((s) => s.selectFurniture);
   const selectWindow = useDesignerStore((s) => s.selectWindow);
   const selectCurtain = useDesignerStore((s) => s.selectCurtain);
+  const selectWall = useDesignerStore((s) => s.selectWall);
   const getCatalogEntry = useDesignerStore((s) => s.getCatalogEntry);
   const getRoomById = useDesignerStore((s) => s.getRoomById);
   const findFloorForRoomId = useDesignerStore((s) => s.findFloorForRoomId);
@@ -604,6 +642,25 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     [floors, getAutoWallsForFloor]
   );
 
+  const applyFurnitureMaterial = useCallback((furnitureGroup: THREE.Group, materialId: string | undefined) => {
+    if (!materialId) return;
+    const preset = getMaterialById(materialId);
+    if (!preset) return;
+    furnitureGroup.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const newMat = createThreeMaterial(preset);
+        newMat.emissive = new THREE.Color(0x000000);
+        newMat.emissiveIntensity = 0;
+        if (Array.isArray(child.material)) {
+          child.material.forEach((m) => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+        child.material = newMat;
+      }
+    });
+  }, []);
+
   const updateFurnitureMesh = useCallback(
     (item: FurnitureItem, floorLevel: number) => {
       const group = furnitureGroupRef.current;
@@ -635,6 +692,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
           roomId: item.roomId,
           floorLevel,
         };
+        applyFurnitureMaterial(furnitureGroup, item.materialId);
         furnitureGroup.position.set(item.x * SCALE + w / 2, baseY, item.y * SCALE + d / 2);
         furnitureMeshesRef.current.set(item.id, furnitureGroup);
         group.add(furnitureGroup);
@@ -676,6 +734,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
                 child.receiveShadow = true;
               }
             });
+            applyFurnitureMaterial(gltfGroup, item.materialId);
             gltfGroup.position.set(item.x * SCALE + w / 2, baseY, item.y * SCALE + d / 2);
             furnitureMeshesRef.current.set(item.id, gltfGroup);
             group.add(gltfGroup);
@@ -716,7 +775,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
       }
       buildAndRegister(furnitureGroup);
     },
-    [getCatalogEntry]
+    [getCatalogEntry, applyFurnitureMaterial]
   );
 
   const updateWindowMesh = useCallback(
@@ -950,28 +1009,119 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     const group = wallsGroupRef.current;
     if (!group) return;
     clearGroup(group);
-    const wallMat = new THREE.MeshStandardMaterial({
-      color: 0xd9cfc2,
-      roughness: 0.85,
-      metalness: 0.02,
-    });
+    wallMeshesRef.current.clear();
+    const WALL_THICKNESS_PX = GRID_SIZE * 0.2;
+
     floors.forEach((floor) => {
       const baseY = floorYOffset(floor.level);
-      const autoWalls = getAutoWallsForFloor(floor.level);
-      autoWalls.forEach((wall) => {
-        const wx = wall.x * SCALE;
-        const wy = wall.y * SCALE;
-        const ww = Math.max(wall.width * SCALE, 0.04);
-        const wh = Math.max(wall.height * SCALE, 0.04);
-        const wallMesh = new THREE.Mesh(new THREE.BoxGeometry(ww, WALL_HEIGHT, wh), wallMat);
-        wallMesh.position.set(wx + ww / 2, baseY + WALL_HEIGHT / 2, wy + wh / 2);
-        wallMesh.castShadow = true;
-        wallMesh.receiveShadow = true;
-        wallMesh.userData = { type: 'wall', floorLevel: floor.level };
-        group.add(wallMesh);
+      const rooms = floor.rooms;
+
+      rooms.forEach((room) => {
+        const rx = room.x * GRID_SIZE;
+        const ry = room.y * GRID_SIZE;
+        const rw = room.widthGrids * GRID_SIZE;
+        const rh = room.heightGrids * GRID_SIZE;
+
+        const adjacent = rooms.filter((other) => {
+          if (other.id === room.id) return false;
+          const orx = other.x * GRID_SIZE;
+          const ory = other.y * GRID_SIZE;
+          const orw = other.widthGrids * GRID_SIZE;
+          const orh = other.heightGrids * GRID_SIZE;
+          const gap = GRID_SIZE * 0.5;
+          const overlapX = rx < orx + orw + gap && rx + rw + gap > orx;
+          const overlapY = ry < ory + orh + gap && ry + rh + gap > ory;
+          return overlapX && overlapY;
+        });
+
+        const isLeftAdjacent = adjacent.some((o) => {
+          const orx = o.x * GRID_SIZE;
+          const ory = o.y * GRID_SIZE;
+          const orh = o.heightGrids * GRID_SIZE;
+          return (
+            Math.abs((orx + o.widthGrids * GRID_SIZE) - rx) < GRID_SIZE * 0.5 &&
+            ry < ory + orh &&
+            ry + rh > ory
+          );
+        });
+        const isRightAdjacent = adjacent.some((o) => {
+          const orx = o.x * GRID_SIZE;
+          const ory = o.y * GRID_SIZE;
+          const orh = o.heightGrids * GRID_SIZE;
+          return Math.abs(orx - (rx + rw)) < GRID_SIZE * 0.5 && ry < ory + orh && ry + rh > ory;
+        });
+        const isTopAdjacent = adjacent.some((o) => {
+          const orx = o.x * GRID_SIZE;
+          const ory = o.y * GRID_SIZE;
+          const orw = o.widthGrids * GRID_SIZE;
+          return (
+            Math.abs((ory + o.heightGrids * GRID_SIZE) - ry) < GRID_SIZE * 0.5 &&
+            rx < orx + orw &&
+            rx + rw > orx
+          );
+        });
+        const isBottomAdjacent = adjacent.some((o) => {
+          const orx = o.x * GRID_SIZE;
+          const ory = o.y * GRID_SIZE;
+          const orw = o.widthGrids * GRID_SIZE;
+          return Math.abs(ory - (ry + rh)) < GRID_SIZE * 0.5 && rx < orx + orw && rx + rw > orx;
+        });
+
+        const wallMaterialById = (materialId: string | undefined): THREE.MeshStandardMaterial => {
+          const preset = getMaterialById(materialId ?? DEFAULT_WALL_MATERIAL_ID);
+          if (preset) return createThreeMaterial(preset);
+          return new THREE.MeshStandardMaterial({
+            color: 0xd9cfc2,
+            roughness: 0.85,
+            metalness: 0.02,
+          });
+        };
+
+        const wallMats = room.wallMaterials ?? {};
+
+        const createWallMesh = (
+          orientation: WallOrientation,
+          wx: number,
+          wy: number,
+          ww: number,
+          wh: number
+        ) => {
+          const matId = wallMats[orientation];
+          const mat = wallMaterialById(matId);
+          const sx = wx * SCALE;
+          const sy = wy * SCALE;
+          const sww = Math.max(ww * SCALE, 0.04);
+          const swh = Math.max(wh * SCALE, 0.04);
+          const wallMesh = new THREE.Mesh(new THREE.BoxGeometry(sww, WALL_HEIGHT, swh), mat);
+          wallMesh.position.set(sx + sww / 2, baseY + WALL_HEIGHT / 2, sy + swh / 2);
+          wallMesh.castShadow = true;
+          wallMesh.receiveShadow = true;
+          wallMesh.userData = {
+            type: 'wall',
+            floorLevel: floor.level,
+            roomId: room.id,
+            orientation,
+          };
+          const key = `${room.id}-${orientation}`;
+          wallMeshesRef.current.set(key, wallMesh);
+          group.add(wallMesh);
+        };
+
+        if (!isLeftAdjacent) {
+          createWallMesh('left', rx, ry, WALL_THICKNESS_PX, rh);
+        }
+        if (!isRightAdjacent) {
+          createWallMesh('right', rx + rw - WALL_THICKNESS_PX, ry, WALL_THICKNESS_PX, rh);
+        }
+        if (!isTopAdjacent) {
+          createWallMesh('top', rx, ry, rw, WALL_THICKNESS_PX);
+        }
+        if (!isBottomAdjacent) {
+          createWallMesh('bottom', rx, ry + rh - WALL_THICKNESS_PX, rw, WALL_THICKNESS_PX);
+        }
       });
     });
-  }, [floors, getAutoWallsForFloor]);
+  }, [floors]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1196,6 +1346,8 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
       
       curtainMeshesRef.current.forEach((mesh) => clickableObjects.push(mesh));
 
+      wallMeshesRef.current.forEach((mesh) => clickableObjects.push(mesh));
+
       const intersects = raycasterRef.current?.intersectObjects(clickableObjects, true) || [];
 
       if (intersects.length > 0) {
@@ -1220,8 +1372,15 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
             selectWindow(userData.id);
           } else if (userData.type === 'curtain') {
             selectCurtain(userData.id);
+          } else if (userData.type === 'wall') {
+            selectWall({ roomId: userData.roomId, orientation: userData.orientation });
           }
         }
+      } else {
+        selectFurniture(null);
+        selectWindow(null);
+        selectCurtain(null);
+        selectWall(null);
       }
     };
     renderer.domElement.addEventListener('click', handleClick);
@@ -1484,7 +1643,18 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         }
       });
     });
-  }, [selectedId, selectedWindowId, selectedCurtainId]);
+
+    wallMeshesRef.current.forEach((mesh, key) => {
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      if (selectedWall && key === `${selectedWall.roomId}-${selectedWall.orientation}`) {
+        mat.emissive = new THREE.Color(0x10b981);
+        mat.emissiveIntensity = 0.35;
+      } else {
+        mat.emissive = new THREE.Color(0x000000);
+        mat.emissiveIntensity = 0;
+      }
+    });
+  }, [selectedId, selectedWindowId, selectedCurtainId, selectedWall]);
 
   return (
     <div

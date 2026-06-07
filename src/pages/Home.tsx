@@ -19,6 +19,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { FurniturePalette } from '@/components/FurniturePalette';
+import { MaterialPanel } from '@/components/MaterialPanel';
 import { RoomView2D } from '@/components/RoomView2D';
 import { RoomView3D } from '@/components/RoomView3D';
 import { RoomTabs } from '@/components/RoomTabs';
@@ -40,6 +41,7 @@ export default function Home() {
     selectedId,
     selectedWindowId,
     selectedCurtainId,
+    selectedWall,
     drawMode,
     setDrawMode,
     getAllWindows,
@@ -58,6 +60,7 @@ export default function Home() {
     selectFurniture,
     selectWindow,
     selectCurtain,
+    selectWall,
     removeFurniture,
     removeWindow,
     removeCurtain,
@@ -392,8 +395,8 @@ export default function Home() {
             </div>
           </main>
 
-          {(selectedFurniture || selectedWindow || selectedCurtain) && (
-            <aside className="w-[260px] flex-shrink-0">
+          {(selectedFurniture || selectedWindow || selectedCurtain || selectedWall) && (
+            <aside className="w-[260px] flex-shrink-0 flex flex-col gap-4">
               {selectedFurniture && (
                 <div className="flex flex-col gap-4 p-5 bg-white rounded-2xl shadow-[0_4px_24px_rgba(92,74,61,0.1)] border border-stone-100">
                   <div className="flex items-center justify-between pb-3 border-b border-stone-100">
@@ -658,6 +661,18 @@ export default function Home() {
                     </button>
                   </div>
                 </div>
+              )}
+
+              {(selectedFurniture || selectedWall) && (
+                <MaterialPanel
+                  selectedFurniture={selectedFurniture}
+                  selectedWall={selectedWall}
+                  onClose={() => {
+                    if (selectedFurniture) selectFurniture(null);
+                    if (selectedWall) selectWall(null);
+                  }}
+                  onToast={showToast}
+                />
               )}
             </aside>
           )}

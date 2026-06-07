@@ -10,6 +10,18 @@ export type DefaultFurnitureType =
 
 export type FurnitureType = DefaultFurnitureType | string;
 
+export type MaterialCategory = 'wood' | 'fabric' | 'metal' | 'stone' | 'wallpaper';
+
+export interface MaterialPreset {
+  id: string;
+  category: MaterialCategory;
+  label: string;
+  color: string;
+  roughness: number;
+  metalness: number;
+  pattern?: 'woodGrain' | 'fabricWeave' | 'metalBrushed' | 'stoneTile' | 'wallpaperPattern' | 'none';
+}
+
 export interface FurnitureItem {
   id: string;
   type: FurnitureType;
@@ -20,6 +32,18 @@ export interface FurnitureItem {
   color: string;
   label: string;
   roomId: string;
+  materialId?: string;
+}
+
+export interface WallMaterialOverride {
+  roomId: string;
+  orientation: WallOrientation;
+  materialId: string;
+}
+
+export interface SelectedWall {
+  roomId: string;
+  orientation: WallOrientation;
 }
 
 export interface WallItem {
@@ -80,6 +104,7 @@ export interface Room {
   curtains: CurtainItem[];
   roomWidthGrids: number;
   roomHeightGrids: number;
+  wallMaterials?: Partial<Record<WallOrientation, string>>;
 }
 
 export interface StaircaseArea {
