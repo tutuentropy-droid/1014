@@ -317,7 +317,7 @@ const getDefaultRoomsForFloor = (floorLevel: number): Room[] => {
 const getDefaultFloors = (): Floor[] => {
   const floors: Floor[] = [];
   for (let i = 0; i < MAX_FLOORS; i++) {
-    const defaultStaircase: StaircaseArea = i === 0 ? {
+    const defaultStaircase: StaircaseArea | null = i < MAX_FLOORS - 1 ? {
       x: 28,
       y: 2,
       widthGrids: 4,

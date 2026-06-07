@@ -802,6 +802,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         floorMesh.rotation.x = -Math.PI / 2;
         floorMesh.position.set(rx + rw / 2, baseY, ry + rh / 2);
         floorMesh.receiveShadow = true;
+        floorMesh.userData = { type: 'roomFloor', floorLevel: floor.level };
         group.add(floorMesh);
       });
     });
@@ -813,22 +814,40 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     clearGroup(group);
     slabMeshesRef.current.clear();
 
-    const slabMat = new THREE.MeshStandardMaterial({
-      color: 0x887766,
-      roughness: 0.85,
-      metalness: 0.02,
-    });
     const slabW = CANVAS_W;
     const slabD = CANVAS_H;
 
     for (let i = 0; i <= floors.length; i++) {
+      const isCeiling = i === floors.length;
+      const isGround = i === 0;
       const slabGeo = new THREE.BoxGeometry(slabW, SLAB_THICKNESS, slabD);
-      const slab = new THREE.Mesh(slabGeo, slabMat.clone());
+      let slabMat: THREE.MeshStandardMaterial;
+      if (isCeiling) {
+        slabMat = new THREE.MeshStandardMaterial({
+          color: 0xe8e0d0,
+          roughness: 0.9,
+          metalness: 0.0,
+          side: THREE.DoubleSide,
+        });
+      } else if (isGround) {
+        slabMat = new THREE.MeshStandardMaterial({
+          color: 0x5a4a3a,
+          roughness: 0.9,
+          metalness: 0.02,
+        });
+      } else {
+        slabMat = new THREE.MeshStandardMaterial({
+          color: 0x887766,
+          roughness: 0.85,
+          metalness: 0.02,
+        });
+      }
+      const slab = new THREE.Mesh(slabGeo, slabMat);
       const slabY = i * FLOOR_HEIGHT - SLAB_THICKNESS / 2;
       slab.position.set(slabW / 2, slabY, slabD / 2);
       slab.receiveShadow = true;
       slab.castShadow = true;
-      slab.userData = { type: 'slab', floorLevel: i };
+      slab.userData = { type: isCeiling ? 'ceiling' : 'slab', floorLevel: i, isCeiling };
       group.add(slab);
       slabMeshesRef.current.set(i, slab);
     }
@@ -878,6 +897,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         step.position.set(sx + sw / 2, stepY + stepH / 2, stepZ);
         step.castShadow = true;
         step.receiveShadow = true;
+        step.userData = { type: 'staircaseStep', floorLevel: floor.level };
         group.add(step);
       }
 
@@ -895,9 +915,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         if (level > currentFloor + 1) {
           slab.visible = false;
         } else if (level === currentFloor + 1) {
-          slab.visible = true;
-          (slab.material as THREE.MeshStandardMaterial).opacity = 0.15;
-          (slab.material as THREE.MeshStandardMaterial).transparent = true;
+          slab.visible = false;
         } else {
           slab.visible = true;
           (slab.material as THREE.MeshStandardMaterial).opacity = 1;
@@ -905,6 +923,27 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         }
       }
     });
+
+    const setFloorContentVisibility = (group: THREE.Group | null, visibleFn: (level: number) => boolean) => {
+      if (!group) return;
+      group.traverse((obj) => {
+        if (obj instanceof THREE.Mesh || obj instanceof THREE.Group) {
+          const ud = (obj as any).userData;
+          if (ud && typeof ud.floorLevel === 'number') {
+            obj.visible = visibleFn(ud.floorLevel);
+          }
+        }
+      });
+    };
+
+    const visibleFn = (level: number) => !seeThroughMode || level <= currentFloor;
+
+    setFloorContentVisibility(wallsGroupRef.current, visibleFn);
+    setFloorContentVisibility(furnitureGroupRef.current, visibleFn);
+    setFloorContentVisibility(windowsGroupRef.current, visibleFn);
+    setFloorContentVisibility(curtainsGroupRef.current, visibleFn);
+    setFloorContentVisibility(staircaseGroupRef.current, visibleFn);
+    setFloorContentVisibility(floorsGroupRef.current, visibleFn);
   }, [seeThroughMode, currentFloor]);
 
   const buildWalls = useCallback(() => {
@@ -1462,7 +1501,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         </div>
         {seeThroughMode && (
           <div className="px-2.5 py-1 bg-cyan-500/90 text-white rounded-md text-[10px] font-medium backdrop-blur shadow-sm">
-            透视模式 · 隐藏 {currentFloor + 1}F 以上楼板
+            透视模式 · 隐藏 {currentFloor + 2}F 及以上所有内容
           </div>
         )}
         {isFirstPerson && (

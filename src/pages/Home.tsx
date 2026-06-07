@@ -211,7 +211,7 @@ export default function Home() {
                     ? 'bg-gradient-to-r from-cyan-500 to-sky-600 text-white shadow-md shadow-sky-500/25'
                     : 'text-stone-600 hover:bg-stone-50'
                 }`}
-                title={seeThroughMode ? '关闭透视模式' : '开启透视模式（隐藏上层楼板）'}
+                title={seeThroughMode ? '关闭透视模式' : '开启透视模式（隐藏当前楼层以上所有内容）'}
               >
                 {seeThroughMode ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                 透视模式
