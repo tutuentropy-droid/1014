@@ -1,4 +1,13 @@
-export type DefaultFurnitureType = 'bed' | 'sofa' | 'table' | 'plant';
+export type DefaultFurnitureType =
+  | 'bed'
+  | 'sofa'
+  | 'table'
+  | 'chair'
+  | 'plant'
+  | 'tvcabinet'
+  | 'wardrobe'
+  | 'bookshelf';
+
 export type FurnitureType = DefaultFurnitureType | string;
 
 export interface FurnitureItem {
@@ -10,6 +19,7 @@ export interface FurnitureItem {
   height: number;
   color: string;
   label: string;
+  roomId: string;
 }
 
 export interface WallItem {
@@ -33,13 +43,17 @@ export interface CustomFurnitureCatalogEntry {
 }
 
 export type ViewMode = '2d' | '3d';
-export type DrawMode = 'none' | 'wall';
+export type DrawMode = 'none' | 'wall' | 'room';
 
 export interface Room {
   id: string;
   name: string;
+  x: number;
+  y: number;
+  widthGrids: number;
+  heightGrids: number;
+  color: string;
   furniture: FurnitureItem[];
-  walls: WallItem[];
   roomWidthGrids: number;
   roomHeightGrids: number;
 }

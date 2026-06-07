@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Plus, Upload, X } from 'lucide-react';
 import { FurnitureIcon } from './FurnitureIcon';
 import { useDesignerStore } from '@/store/useDesignerStore';
-import { GRID_SIZE } from '@/data/furnitureData';
+import { GRID_SIZE, MAX_FURNITURE_GRIDS, MIN_FURNITURE_GRIDS } from '@/data/furnitureData';
 import type { FurnitureType, CustomFurnitureCatalogEntry } from '@/types/furniture';
 
 interface FurniturePaletteProps {
@@ -136,11 +136,11 @@ export const FurniturePalette = ({ onDragStart, onDragEnd }: FurniturePalettePro
               <label className="text-xs font-medium text-stone-600">宽（格）</label>
               <input
                 type="number"
-                min={1}
-                max={3}
+                min={MIN_FURNITURE_GRIDS}
+                max={MAX_FURNITURE_GRIDS}
                 value={uploadWidthGrids}
                 onChange={(e) =>
-                  setUploadWidthGrids(Math.max(1, Math.min(3, parseInt(e.target.value) || 1)))
+                  setUploadWidthGrids(Math.max(MIN_FURNITURE_GRIDS, Math.min(MAX_FURNITURE_GRIDS, parseInt(e.target.value) || MIN_FURNITURE_GRIDS)))
                 }
                 className="px-3 py-1.5 text-sm bg-white rounded-lg border border-stone-200 focus:border-amber-400 focus:outline-none"
               />
@@ -149,11 +149,11 @@ export const FurniturePalette = ({ onDragStart, onDragEnd }: FurniturePalettePro
               <label className="text-xs font-medium text-stone-600">高（格）</label>
               <input
                 type="number"
-                min={1}
-                max={3}
+                min={MIN_FURNITURE_GRIDS}
+                max={MAX_FURNITURE_GRIDS}
                 value={uploadHeightGrids}
                 onChange={(e) =>
-                  setUploadHeightGrids(Math.max(1, Math.min(3, parseInt(e.target.value) || 1)))
+                  setUploadHeightGrids(Math.max(MIN_FURNITURE_GRIDS, Math.min(MAX_FURNITURE_GRIDS, parseInt(e.target.value) || MIN_FURNITURE_GRIDS)))
                 }
                 className="px-3 py-1.5 text-sm bg-white rounded-lg border border-stone-200 focus:border-amber-400 focus:outline-none"
               />

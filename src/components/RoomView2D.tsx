@@ -1,25 +1,26 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { FurnitureIcon } from './FurnitureIcon';
 import { useDesignerStore } from '@/store/useDesignerStore';
-import { GRID_SIZE } from '@/data/furnitureData';
-import type { FurnitureItem, FurnitureType } from '@/types/furniture';
-import { canPlaceAt } from '@/utils/collision';
+import { GRID_SIZE, CANVAS_WIDTH_GRIDS, CANVAS_HEIGHT_GRIDS } from '@/data/furnitureData';
+import type { FurnitureItem, FurnitureType, Room } from '@/types/furniture';
+import { canPlaceFurnitureInRoom, generateWallsForRooms, canPlaceRoom } from '@/utils/collision';
+
+type RoomResizeHandle = 'nw' | 'ne' | 'sw' | 'se';
 
 interface DragState {
-  type: 'move' | 'new';
+  type: 'move-furniture' | 'new-furniture' | 'move-room' | 'resize-room';
   furnitureType?: FurnitureType;
   id?: string;
   offsetX: number;
   offsetY: number;
   width: number;
   height: number;
-}
-
-interface WallDrawState {
-  startX: number;
-  startY: number;
-  currentX: number;
-  currentY: number;
+  roomId?: string;
+  resizeHandle?: RoomResizeHandle;
+  roomOrigX?: number;
+  roomOrigY?: number;
+  roomOrigW?: number;
+  roomOrigH?: number;
 }
 
 interface PanState {
@@ -29,160 +30,60 @@ interface PanState {
   originOffsetY: number;
 }
 
-const MIN_SCALE = 0.5;
-const MAX_SCALE = 3;
+const MIN_SCALE = 0.3;
+const MAX_SCALE = 2;
 
 export const RoomView2D = () => {
   const {
-    furniture,
-    walls,
+    rooms,
     selectedId,
-    drawMode,
+    selectedRoomId,
     addFurniture,
     moveFurniture,
     selectFurniture,
     removeFurniture,
-    removeWall,
-    addWall,
-    getRoomWidth,
-    getRoomHeight,
+    selectRoom,
+    moveRoom,
+    resizeRoom,
+    getCanvasWidth,
+    getCanvasHeight,
     getCatalogEntry,
-    setDrawMode,
   } = useDesignerStore();
 
-  const roomWidth = getRoomWidth();
-  const roomHeight = getRoomHeight();
+  const canvasWidth = getCanvasWidth();
+  const canvasHeight = getCanvasHeight();
 
-  const roomRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
-  const [ghostPos, setGhostPos] = useState<{ x: number; y: number; valid: boolean } | null>(null);
-  const [wallDraw, setWallDraw] = useState<WallDrawState | null>(null);
-  const [scale, setScale] = useState(1);
-  const [offsetX, setOffsetX] = useState(0);
-  const [offsetY, setOffsetY] = useState(0);
+  const [ghostPos, setGhostPos] = useState<{ x: number; y: number; valid: boolean; width: number; height: number } | null>(null);
+  const [roomGhost, setRoomGhost] = useState<{ x: number; y: number; w: number; h: number; valid: boolean } | null>(null);
+  const [scale, setScale] = useState(0.75);
+  const [offsetX, setOffsetX] = useState(20);
+  const [offsetY, setOffsetY] = useState(20);
   const panRef = useRef<PanState | null>(null);
   const [isPanning, setIsPanning] = useState(false);
 
   const snapToGrid = (v: number) => Math.round(v / GRID_SIZE) * GRID_SIZE;
+  const snapGrids = (v: number) => Math.round(v);
 
-  const capture2DLayout = useCallback(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = roomWidth;
-    canvas.height = roomHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const gradient = ctx.createRadialGradient(
-      roomWidth * 0.3,
-      roomHeight * 0.2,
-      0,
-      roomWidth * 0.5,
-      roomHeight * 0.5,
-      Math.max(roomWidth, roomHeight)
-    );
-    gradient.addColorStop(0, '#faf6f0');
-    gradient.addColorStop(1, '#f3ece0');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, roomWidth, roomHeight);
-
-    ctx.strokeStyle = '#e7e0d5';
-    for (let x = 0; x <= roomWidth; x += GRID_SIZE) {
-      ctx.lineWidth = x % (GRID_SIZE * 2) === 0 ? 1 : 0.5;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, roomHeight);
-      ctx.stroke();
-    }
-    for (let y = 0; y <= roomHeight; y += GRID_SIZE) {
-      ctx.lineWidth = y % (GRID_SIZE * 2) === 0 ? 1 : 0.5;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(roomWidth, y);
-      ctx.stroke();
-    }
-
-    walls.forEach((wall) => {
-      ctx.save();
-      ctx.fillStyle = 'rgba(156, 163, 175, 0.5)';
-      ctx.fillRect(wall.x, wall.y, wall.width, wall.height);
-      ctx.strokeStyle = 'rgba(107, 114, 128, 0.4)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(wall.x, wall.y, wall.width, wall.height);
-      ctx.beginPath();
-      ctx.strokeStyle = 'rgba(107, 114, 128, 0.2)';
-      ctx.lineWidth = 1;
-      for (let i = -wall.height; i < wall.width; i += 8) {
-        ctx.moveTo(wall.x + i, wall.y);
-        ctx.lineTo(wall.x + i + wall.height, wall.y + wall.height);
+  const findRoomAt = useCallback((x: number, y: number): Room | undefined => {
+    for (const room of rooms) {
+      const rx = room.x * GRID_SIZE;
+      const ry = room.y * GRID_SIZE;
+      const rw = room.widthGrids * GRID_SIZE;
+      const rh = room.heightGrids * GRID_SIZE;
+      if (x >= rx && x < rx + rw && y >= ry && y < ry + rh) {
+        return room;
       }
-      ctx.clip();
-      ctx.stroke();
-      ctx.restore();
-    });
+    }
+    return undefined;
+  }, [rooms]);
 
-    furniture.forEach((item) => {
-      ctx.save();
-      const radius = Math.min(item.width, item.height) * 0.1;
-      const x = item.x;
-      const y = item.y;
-      const w = item.width;
-      const h = item.height;
-
-      ctx.beginPath();
-      ctx.moveTo(x + radius, y);
-      ctx.lineTo(x + w - radius, y);
-      ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
-      ctx.lineTo(x + w, y + h - radius);
-      ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-      ctx.lineTo(x + radius, y + h);
-      ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
-      ctx.lineTo(x, y + radius);
-      ctx.quadraticCurveTo(x, y, x + radius, y);
-      ctx.closePath();
-
-      ctx.fillStyle = item.color;
-      ctx.fill();
-
-      const highlightGradient = ctx.createLinearGradient(x, y, x + w, y + h);
-      highlightGradient.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
-      highlightGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
-      ctx.fillStyle = highlightGradient;
-      ctx.fill();
-
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
-      ctx.shadowBlur = 8;
-      ctx.shadowOffsetY = 2;
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      if (selectedId === item.id) {
-        ctx.shadowColor = 'transparent';
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
-      ctx.restore();
-    });
-
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.font = '14px monospace';
-    ctx.fillText(`${roomWidth} × ${roomHeight}`, 12, 22);
-
-    return canvas.toDataURL('image/png');
-  }, [roomWidth, roomHeight, walls, furniture, selectedId]);
-
-  useEffect(() => {
-    (window as unknown as { capture2DLayout?: () => string | undefined }).capture2DLayout =
-      capture2DLayout;
-  }, [capture2DLayout]);
-
-  const screenToRoom = useCallback(
+  const screenToCanvas = useCallback(
     (clientX: number, clientY: number) => {
-      const room = roomRef.current;
-      if (!room) return { x: 0, y: 0 };
-      const rect = room.getBoundingClientRect();
+      const container = containerRef.current;
+      if (!container) return { x: 0, y: 0 };
+      const rect = container.getBoundingClientRect();
       const screenX = clientX - rect.left;
       const screenY = clientY - rect.top;
       return {
@@ -193,10 +94,6 @@ export const RoomView2D = () => {
     [offsetX, offsetY, scale]
   );
 
-  const getRoomCoords = (e: React.DragEvent | React.MouseEvent | MouseEvent) => {
-    return screenToRoom(e.clientX, e.clientY);
-  };
-
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
@@ -206,18 +103,18 @@ export const RoomView2D = () => {
       }
       if (e.key === 'Escape') {
         selectFurniture(null);
-        if (drawMode === 'wall') setDrawMode('none');
+        selectRoom(null);
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [selectedId, removeFurniture, selectFurniture, drawMode, setDrawMode]);
+  }, [selectedId, removeFurniture, selectFurniture, selectRoom]);
 
   const handleWheel = useCallback(
     (e: WheelEvent) => {
-      if (!roomRef.current) return;
+      if (!containerRef.current) return;
       e.preventDefault();
-      const rect = roomRef.current.getBoundingClientRect();
+      const rect = containerRef.current.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
@@ -236,11 +133,11 @@ export const RoomView2D = () => {
   );
 
   useEffect(() => {
-    const room = roomRef.current;
-    if (!room) return;
-    room.addEventListener('wheel', handleWheel, { passive: false });
+    const container = containerRef.current;
+    if (!container) return;
+    container.addEventListener('wheel', handleWheel, { passive: false });
     return () => {
-      room.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('wheel', handleWheel);
     };
   }, [handleWheel]);
 
@@ -285,27 +182,32 @@ export const RoomView2D = () => {
       return;
     }
     const catalog = getCatalogEntry(type);
-    const { x, y } = getRoomCoords(e);
+    const { x, y } = screenToCanvas(e.clientX, e.clientY);
+    const room = findRoomAt(x, y);
+    if (!room) {
+      setDrag(null);
+      setGhostPos(null);
+      return;
+    }
     const finalX = snapToGrid(x - catalog.width / 2);
     const finalY = snapToGrid(y - catalog.height / 2);
-    addFurniture(type, finalX, finalY);
+    addFurniture(type, finalX, finalY, room.id);
     setDrag(null);
     setGhostPos(null);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    if (drawMode === 'wall') return;
     e.dataTransfer.dropEffect = 'copy';
     const type = e.dataTransfer.types.includes('furniture-type')
       ? ((e as unknown as { furnitureType?: FurnitureType }).furnitureType ??
-        (drag?.type === 'new' ? drag.furnitureType : undefined))
+        (drag?.type === 'new-furniture' ? drag.furnitureType : undefined))
       : undefined;
 
     if (!drag && type) {
       const catalog = getCatalogEntry(type);
       setDrag({
-        type: 'new',
+        type: 'new-furniture',
         furnitureType: type,
         offsetX: catalog.width / 2,
         offsetY: catalog.height / 2,
@@ -314,19 +216,24 @@ export const RoomView2D = () => {
       });
     }
 
-    if (drag) {
-      const { x, y } = getRoomCoords(e);
+    if (drag && drag.type === 'new-furniture') {
+      const { x, y } = screenToCanvas(e.clientX, e.clientY);
+      const room = findRoomAt(x, y);
+      if (!room) {
+        setGhostPos({ x: x - drag.offsetX, y: y - drag.offsetY, valid: false, width: drag.width, height: drag.height });
+        return;
+      }
       const finalX = snapToGrid(x - drag.offsetX);
       const finalY = snapToGrid(y - drag.offsetY);
-      const valid = canPlaceAt(
+      const allFurniture = rooms.flatMap((r) => r.furniture);
+      const autoWalls = generateWallsForRooms(rooms) as unknown as { x: number; y: number; width: number; height: number; id: string }[];
+      const valid = canPlaceFurnitureInRoom(
         { x: finalX, y: finalY, width: drag.width, height: drag.height },
-        furniture,
-        walls,
-        drag.type === 'move' ? drag.id : undefined,
-        roomWidth,
-        roomHeight
+        room,
+        allFurniture,
+        autoWalls
       );
-      setGhostPos({ x: finalX, y: finalY, valid });
+      setGhostPos({ x: finalX, y: finalY, valid, width: drag.width, height: drag.height });
     }
   };
 
@@ -334,53 +241,149 @@ export const RoomView2D = () => {
     setGhostPos(null);
   };
 
-  const handleMouseDown = (e: React.MouseEvent, item: FurnitureItem) => {
+  const handleFurnitureMouseDown = (e: React.MouseEvent, item: FurnitureItem) => {
     if (e.button !== 0) return;
-    if (drawMode === 'wall') return;
     e.stopPropagation();
     selectFurniture(item.id);
-    const { x, y } = getRoomCoords(e);
+    selectRoom(item.roomId);
+    const { x, y } = screenToCanvas(e.clientX, e.clientY);
     setDrag({
-      type: 'move',
+      type: 'move-furniture',
       id: item.id,
       offsetX: x - item.x,
       offsetY: y - item.y,
       width: item.width,
       height: item.height,
+      roomId: item.roomId,
     });
   };
 
-  const handleWallClick = (e: React.MouseEvent, wallId: string) => {
+  const handleRoomMouseDown = (e: React.MouseEvent, room: Room) => {
+    if (e.button !== 0) return;
     e.stopPropagation();
-    if (e.shiftKey) {
-      removeWall(wallId);
-    }
+    selectRoom(room.id);
+    selectFurniture(null);
+    const { x, y } = screenToCanvas(e.clientX, e.clientY);
+    const rx = room.x * GRID_SIZE;
+    const ry = room.y * GRID_SIZE;
+    setDrag({
+      type: 'move-room',
+      id: room.id,
+      offsetX: x - rx,
+      offsetY: y - ry,
+      width: room.widthGrids * GRID_SIZE,
+      height: room.heightGrids * GRID_SIZE,
+      roomId: room.id,
+      roomOrigX: room.x,
+      roomOrigY: room.y,
+      roomOrigW: room.widthGrids,
+      roomOrigH: room.heightGrids,
+    });
+  };
+
+  const handleRoomResizeMouseDown = (e: React.MouseEvent, room: Room, handle: RoomResizeHandle) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    selectRoom(room.id);
+    setDrag({
+      type: 'resize-room',
+      id: room.id,
+      offsetX: 0,
+      offsetY: 0,
+      width: room.widthGrids * GRID_SIZE,
+      height: room.heightGrids * GRID_SIZE,
+      roomId: room.id,
+      resizeHandle: handle,
+      roomOrigX: room.x,
+      roomOrigY: room.y,
+      roomOrigW: room.widthGrids,
+      roomOrigH: room.heightGrids,
+    });
   };
 
   useEffect(() => {
-    if (!drag || drag.type !== 'move') return;
+    if (!drag) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      const { x, y } = getRoomCoords(e as unknown as React.MouseEvent);
-      const finalX = snapToGrid(x - drag.offsetX);
-      const finalY = snapToGrid(y - drag.offsetY);
-      const valid = canPlaceAt(
-        { x: finalX, y: finalY, width: drag.width, height: drag.height },
-        furniture,
-        walls,
-        drag.id,
-        roomWidth,
-        roomHeight
-      );
-      setGhostPos({ x: finalX, y: finalY, valid });
+      const { x, y } = screenToCanvas(e.clientX, e.clientY);
+
+      if (drag.type === 'move-furniture') {
+        const room = rooms.find((r) => r.id === drag.roomId);
+        if (!room) return;
+        const finalX = snapToGrid(x - drag.offsetX);
+        const finalY = snapToGrid(y - drag.offsetY);
+        const allFurniture = rooms.flatMap((r) => r.furniture);
+        const autoWalls = generateWallsForRooms(rooms) as unknown as { x: number; y: number; width: number; height: number; id: string }[];
+        const valid = canPlaceFurnitureInRoom(
+          { x: finalX, y: finalY, width: drag.width, height: drag.height },
+          room,
+          allFurniture,
+          autoWalls,
+          drag.id
+        );
+        setGhostPos({ x: finalX, y: finalY, valid, width: drag.width, height: drag.height });
+      } else if (drag.type === 'move-room') {
+        const finalXGrids = snapGrids((x - drag.offsetX) / GRID_SIZE);
+        const finalYGrids = snapGrids((y - drag.offsetY) / GRID_SIZE);
+        const w = drag.roomOrigW!;
+        const h = drag.roomOrigH!;
+        const valid = canPlaceRoom(
+          { x: finalXGrids, y: finalYGrids, widthGrids: w, heightGrids: h },
+          rooms,
+          drag.roomId,
+          CANVAS_WIDTH_GRIDS,
+          CANVAS_HEIGHT_GRIDS
+        );
+        setRoomGhost({ x: finalXGrids, y: finalYGrids, w, h, valid });
+      } else if (drag.type === 'resize-room') {
+        const handle = drag.resizeHandle!;
+        let newX = drag.roomOrigX!;
+        let newY = drag.roomOrigY!;
+        let newW = drag.roomOrigW!;
+        let newH = drag.roomOrigH!;
+
+        const cursorXGrids = snapGrids(x / GRID_SIZE);
+        const cursorYGrids = snapGrids(y / GRID_SIZE);
+
+        if (handle.includes('e')) {
+          newW = Math.max(4, cursorXGrids - drag.roomOrigX!);
+        }
+        if (handle.includes('w')) {
+          const diff = drag.roomOrigX! - cursorXGrids;
+          newW = Math.max(4, drag.roomOrigW! + diff);
+          newX = cursorXGrids;
+        }
+        if (handle.includes('s')) {
+          newH = Math.max(4, cursorYGrids - drag.roomOrigY!);
+        }
+        if (handle.includes('n')) {
+          const diff = drag.roomOrigY! - cursorYGrids;
+          newH = Math.max(4, drag.roomOrigH! + diff);
+          newY = cursorYGrids;
+        }
+
+        const valid = canPlaceRoom(
+          { x: newX, y: newY, widthGrids: newW, heightGrids: newH },
+          rooms,
+          drag.roomId,
+          CANVAS_WIDTH_GRIDS,
+          CANVAS_HEIGHT_GRIDS
+        );
+        setRoomGhost({ x: newX, y: newY, w: newW, h: newH, valid });
+      }
     };
 
     const handleMouseUp = () => {
-      if (ghostPos && ghostPos.valid) {
+      if (drag.type === 'move-furniture' && ghostPos && ghostPos.valid) {
         moveFurniture(drag.id!, ghostPos.x, ghostPos.y);
+      } else if (drag.type === 'move-room' && roomGhost && roomGhost.valid) {
+        moveRoom(drag.roomId!, roomGhost.x, roomGhost.y);
+      } else if (drag.type === 'resize-room' && roomGhost && roomGhost.valid) {
+        resizeRoom(drag.roomId!, roomGhost.w, roomGhost.h);
       }
       setDrag(null);
       setGhostPos(null);
+      setRoomGhost(null);
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -389,238 +392,273 @@ export const RoomView2D = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [drag, furniture, walls, moveFurniture, ghostPos, roomWidth, roomHeight]);
+  }, [drag, ghostPos, roomGhost, rooms, screenToCanvas, moveFurniture, moveRoom, resizeRoom]);
 
-  const handleRoomMouseDown = (e: React.MouseEvent) => {
+  const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1) {
       handleMiddleMouseDown(e);
       return;
     }
-    if (drawMode !== 'wall') return;
     if (e.button !== 0) return;
-    const { x, y } = getRoomCoords(e);
-    const sx = snapToGrid(x);
-    const sy = snapToGrid(y);
-    setWallDraw({ startX: sx, startY: sy, currentX: sx, currentY: sy });
-  };
-
-  useEffect(() => {
-    if (!wallDraw) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const { x, y } = getRoomCoords(e as unknown as React.MouseEvent);
-      setWallDraw((prev) =>
-        prev ? { ...prev, currentX: snapToGrid(x), currentY: snapToGrid(y) } : prev
-      );
-    };
-
-    const handleMouseUp = () => {
-      if (wallDraw) {
-        const x = Math.min(wallDraw.startX, wallDraw.currentX);
-        const y = Math.min(wallDraw.startY, wallDraw.currentY);
-        const width = Math.abs(wallDraw.currentX - wallDraw.startX);
-        const height = Math.abs(wallDraw.currentY - wallDraw.startY);
-        addWall(x, y, width, height);
-      }
-      setWallDraw(null);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [wallDraw, addWall]);
-
-  const handleRoomClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) selectFurniture(null);
+    if (e.target === e.currentTarget) {
+      selectFurniture(null);
+      selectRoom(null);
+    }
   };
 
   const renderGrid = () => {
     const lines = [];
-    for (let x = 0; x <= roomWidth; x += GRID_SIZE) {
+    for (let gx = 0; gx <= CANVAS_WIDTH_GRIDS; gx++) {
+      const x = gx * GRID_SIZE;
       lines.push(
         <line
-          key={`v-${x}`}
+          key={`v-${gx}`}
           x1={x}
           y1={0}
           x2={x}
-          y2={roomHeight}
-          stroke="#e7e0d5"
-          strokeWidth={x % (GRID_SIZE * 2) === 0 ? 1 : 0.5}
+          y2={canvasHeight}
+          stroke="#d4cfc7"
+          strokeWidth={gx % 5 === 0 ? 1 : 0.5}
+          opacity={gx % 5 === 0 ? 0.6 : 0.3}
         />
       );
     }
-    for (let y = 0; y <= roomHeight; y += GRID_SIZE) {
+    for (let gy = 0; gy <= CANVAS_HEIGHT_GRIDS; gy++) {
+      const y = gy * GRID_SIZE;
       lines.push(
         <line
-          key={`h-${y}`}
+          key={`h-${gy}`}
           x1={0}
           y1={y}
-          x2={roomWidth}
+          x2={canvasWidth}
           y2={y}
-          stroke="#e7e0d5"
-          strokeWidth={y % (GRID_SIZE * 2) === 0 ? 1 : 0.5}
+          stroke="#d4cfc7"
+          strokeWidth={gy % 5 === 0 ? 1 : 0.5}
+          opacity={gy % 5 === 0 ? 0.6 : 0.3}
         />
       );
     }
     return lines;
   };
 
-  const getWallRect = () => {
-    if (!wallDraw) return null;
-    const x = Math.min(wallDraw.startX, wallDraw.currentX);
-    const y = Math.min(wallDraw.startY, wallDraw.currentY);
-    const width = Math.abs(wallDraw.currentX - wallDraw.startX);
-    const height = Math.abs(wallDraw.currentY - wallDraw.startY);
-    return { x, y, width, height };
-  };
-
-  const previewRect = getWallRect();
+  const autoWalls = generateWallsForRooms(rooms);
 
   return (
     <div
-      ref={roomRef}
-      onClick={handleRoomClick}
-      onMouseDown={handleRoomMouseDown}
+      ref={containerRef}
+      onMouseDown={handleCanvasMouseDown}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       className={`relative rounded-2xl shadow-[0_8px_40px_rgba(92,74,61,0.12)] border-2 overflow-hidden select-none transition-all ${
-        drawMode === 'wall'
-          ? 'border-sky-400 cursor-crosshair'
-          : isPanning
-          ? 'border-stone-200 cursor-grabbing'
-          : 'border-stone-200 cursor-grab'
+        isPanning
+          ? 'border-stone-400 cursor-grabbing'
+          : 'border-stone-300 cursor-grab'
       }`}
       style={{
-        width: roomWidth,
-        height: roomHeight,
-        background:
-          'radial-gradient(ellipse at 30% 20%, #faf6f0 0%, #f3ece0 100%)',
+        width: Math.min(1100, window.innerWidth - 600),
+        height: 700,
+        background: '#f5efe6',
       }}
     >
       <div
-        ref={canvasRef}
         className="absolute top-0 left-0 origin-top-left"
         style={{
           transform: `translate(${offsetX}px, ${offsetY}px) scale(${scale})`,
-          width: roomWidth,
-          height: roomHeight,
+          width: canvasWidth,
+          height: canvasHeight,
         }}
       >
+        <div
+          className="absolute inset-0 rounded-lg"
+          style={{
+            background: 'radial-gradient(ellipse at 30% 20%, #faf6f0 0%, #ede4d3 100%)',
+            border: '2px solid #c9b897',
+            boxShadow: 'inset 0 0 60px rgba(139, 115, 85, 0.1)',
+          }}
+        />
+
         <svg
           className="absolute inset-0 pointer-events-none"
-          width={roomWidth}
-          height={roomHeight}
+          width={canvasWidth}
+          height={canvasHeight}
         >
           {renderGrid()}
         </svg>
 
-        {walls.map((wall) => (
-          <div
-            key={wall.id}
-            onMouseDown={(e) => handleWallClick(e, wall.id)}
-            onClick={(e) => e.stopPropagation()}
-            className="absolute rounded-sm border border-stone-400/40 cursor-pointer hover:border-sky-400 transition-colors"
-            style={{
-              left: wall.x,
-              top: wall.y,
-              width: wall.width,
-              height: wall.height,
-              backgroundColor: 'rgba(156, 163, 175, 0.5)',
-              backgroundImage:
-                'repeating-linear-gradient(45deg, rgba(107,114,128,0.2) 0px, rgba(107,114,128,0.2) 4px, transparent 4px, transparent 8px)',
-            }}
-            title="墙体（Shift+点击删除）"
-          />
-        ))}
+        {rooms.map((room) => {
+          const isSelected = selectedRoomId === room.id;
+          const rx = room.x * GRID_SIZE;
+          const ry = room.y * GRID_SIZE;
+          const rw = room.widthGrids * GRID_SIZE;
+          const rh = room.heightGrids * GRID_SIZE;
+          const isMoving = drag?.type === 'move-room' && drag.roomId === room.id;
+          const isResizing = drag?.type === 'resize-room' && drag.roomId === room.id;
+          const showGhost = (isMoving || isResizing) && roomGhost;
 
-        {previewRect && previewRect.width > 0 && previewRect.height > 0 && (
-          <div
-            className="absolute rounded-sm border-2 border-dashed border-sky-500 pointer-events-none"
-            style={{
-              left: previewRect.x,
-              top: previewRect.y,
-              width: previewRect.width,
-              height: previewRect.height,
-              backgroundColor: 'rgba(56, 189, 248, 0.2)',
-            }}
-          />
-        )}
-
-        {furniture.map((item) => {
-          const isSelected = selectedId === item.id;
-          const isDragging = drag?.type === 'move' && drag.id === item.id;
-          const catalog = getCatalogEntry(item.type);
           return (
-            <div
-              key={item.id}
-              onMouseDown={(e) => handleMouseDown(e, item)}
-              className={`absolute rounded-lg cursor-move transition-shadow duration-150 ${
-                isSelected
-                  ? 'ring-2 ring-amber-500 ring-offset-2 ring-offset-stone-100 shadow-lg z-20'
-                  : 'shadow-md hover:shadow-lg z-10'
-              } ${isDragging ? 'opacity-40' : ''}`}
-              style={{
-                left: item.x,
-                top: item.y,
-                width: item.width,
-                height: item.height,
-                backgroundColor: item.color,
-                backgroundImage:
-                  'linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0) 50%)',
-              }}
-            >
-              <div className="absolute inset-0 flex items-center justify-center">
-                <FurnitureIcon
-                  type={item.type}
-                  size={Math.min(item.width, item.height) * 0.55}
-                  color="rgba(255,255,255,0.9)"
-                  iconUrl={catalog.iconUrl}
-                />
-              </div>
-              {isSelected && (
-                <div className="absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-amber-500 text-white text-[10px] rounded-full font-medium whitespace-nowrap">
-                  {item.label}
+            <div key={room.id}>
+              <div
+                onMouseDown={(e) => handleRoomMouseDown(e, room)}
+                className={`absolute rounded-md cursor-move transition-all ${
+                  isSelected
+                    ? 'ring-2 ring-amber-500 ring-offset-1 ring-offset-transparent z-10'
+                    : 'hover:ring-2 hover:ring-amber-400/50 z-[1]'
+                } ${isMoving || isResizing ? 'opacity-50' : ''}`}
+                style={{
+                  left: rx,
+                  top: ry,
+                  width: rw,
+                  height: rh,
+                  backgroundColor: room.color,
+                  boxShadow: isSelected
+                    ? '0 4px 20px rgba(245, 158, 11, 0.25), inset 0 0 40px rgba(0,0,0,0.04)'
+                    : 'inset 0 0 40px rgba(0,0,0,0.04)',
+                  border: '1px solid rgba(107, 90, 68, 0.25)',
+                }}
+              >
+                <div
+                  className="absolute top-2 left-3 px-2 py-0.5 rounded-md backdrop-blur-sm"
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.85)',
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+                  }}
+                >
+                  <span
+                    className="text-xs font-semibold"
+                    style={{ color: '#5c4a3d' }}
+                  >
+                    {room.name}
+                  </span>
+                  <span className="text-[10px] text-stone-500 ml-1.5 font-mono">
+                    {room.widthGrids}×{room.heightGrids}
+                  </span>
                 </div>
+
+                {room.furniture.map((item) => {
+                  const isItemSelected = selectedId === item.id;
+                  const isDragging = drag?.type === 'move-furniture' && drag.id === item.id;
+                  const catalog = getCatalogEntry(item.type);
+                  return (
+                    <div
+                      key={item.id}
+                      onMouseDown={(e) => handleFurnitureMouseDown(e, item)}
+                      className={`absolute rounded-lg cursor-move transition-shadow duration-150 ${
+                        isItemSelected
+                          ? 'ring-2 ring-amber-500 ring-offset-1 ring-offset-stone-100 shadow-xl z-30'
+                          : 'shadow-md hover:shadow-lg z-20'
+                      } ${isDragging ? 'opacity-30' : ''}`}
+                      style={{
+                        left: item.x - rx,
+                        top: item.y - ry,
+                        width: item.width,
+                        height: item.height,
+                        backgroundColor: item.color,
+                        backgroundImage:
+                          'linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0) 50%)',
+                      }}
+                    >
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <FurnitureIcon
+                          type={item.type}
+                          size={Math.min(item.width, item.height) * 0.5}
+                          color="rgba(255,255,255,0.9)"
+                          iconUrl={catalog.iconUrl}
+                        />
+                      </div>
+                      {isItemSelected && (
+                        <div className="absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-amber-500 text-white text-[10px] rounded-full font-medium whitespace-nowrap shadow">
+                          {item.label}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {isSelected && !isMoving && !isResizing && (
+                  <>
+                    {(['nw', 'ne', 'sw', 'se'] as RoomResizeHandle[]).map((handle) => {
+                      const pos = {
+                        nw: { left: -6, top: -6, cursor: 'nwse-resize' },
+                        ne: { right: -6, top: -6, cursor: 'nesw-resize' },
+                        sw: { left: -6, bottom: -6, cursor: 'nesw-resize' },
+                        se: { right: -6, bottom: -6, cursor: 'nwse-resize' },
+                      }[handle];
+                      return (
+                        <div
+                          key={handle}
+                          onMouseDown={(e) => handleRoomResizeMouseDown(e, room, handle)}
+                          className="absolute w-3 h-3 bg-white border-2 border-amber-500 rounded-sm shadow-md hover:bg-amber-500 hover:scale-125 transition-all z-40"
+                          style={pos}
+                        />
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+
+              {showGhost && (
+                <div
+                  className={`absolute rounded-md pointer-events-none border-2 border-dashed z-50 ${
+                    roomGhost!.valid ? 'border-emerald-500 bg-emerald-500/10' : 'border-red-500 bg-red-500/10'
+                  }`}
+                  style={{
+                    left: roomGhost!.x * GRID_SIZE,
+                    top: roomGhost!.y * GRID_SIZE,
+                    width: roomGhost!.w * GRID_SIZE,
+                    height: roomGhost!.h * GRID_SIZE,
+                  }}
+                />
               )}
             </div>
           );
         })}
 
-        {ghostPos && drag && (
+        {autoWalls.map((wall, idx) => (
           <div
-            className={`absolute rounded-lg pointer-events-none border-2 border-dashed ${
+            key={`aw-${idx}`}
+            className="absolute pointer-events-none"
+            style={{
+              left: wall.x,
+              top: wall.y,
+              width: wall.width,
+              height: wall.height,
+              backgroundColor: 'rgba(90, 75, 60, 0.85)',
+              borderRadius: 1,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            }}
+          />
+        ))}
+
+        {ghostPos && drag && drag.type !== 'move-room' && drag.type !== 'resize-room' && (
+          <div
+            className={`absolute rounded-lg pointer-events-none border-2 border-dashed z-50 ${
               ghostPos.valid ? 'border-emerald-500 bg-emerald-500/15' : 'border-red-500 bg-red-500/15'
             }`}
             style={{
               left: ghostPos.x,
               top: ghostPos.y,
-              width: drag.width,
-              height: drag.height,
+              width: ghostPos.width,
+              height: ghostPos.height,
             }}
           />
         )}
       </div>
 
-      <div className="absolute top-3 left-3 flex items-center gap-2 z-20">
-        <div className="px-2.5 py-1 bg-white/80 backdrop-blur rounded-md text-[10px] text-stone-500 font-mono border border-stone-200">
-          {roomWidth} × {roomHeight}
+      <div className="absolute top-3 left-3 flex items-center gap-2 z-20 flex-wrap">
+        <div className="px-2.5 py-1 bg-white/90 backdrop-blur rounded-md text-[10px] text-stone-600 font-mono border border-stone-200 shadow-sm">
+          画布 {CANVAS_WIDTH_GRIDS}×{CANVAS_HEIGHT_GRIDS} 格
         </div>
-        <div className="px-2.5 py-1 bg-white/80 backdrop-blur rounded-md text-[10px] text-stone-500 font-mono border border-stone-200">
+        <div className="px-2.5 py-1 bg-white/90 backdrop-blur rounded-md text-[10px] text-stone-600 font-mono border border-stone-200 shadow-sm">
           缩放 {Math.round(scale * 100)}%
         </div>
-        {drawMode === 'wall' && (
-          <div className="px-2.5 py-1 bg-sky-500/90 text-white rounded-md text-[10px] font-medium backdrop-blur">
-            画墙模式 · 拖拽绘制 · Shift+点击删除
-          </div>
-        )}
+        <div className="px-2.5 py-1 bg-white/90 backdrop-blur rounded-md text-[10px] text-stone-600 border border-stone-200 shadow-sm">
+          {rooms.length} 个房间 · {rooms.reduce((s, r) => s + r.furniture.length, 0)} 件家具
+        </div>
       </div>
 
-      <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 bg-white/80 backdrop-blur rounded-md text-[10px] text-stone-500 font-mono border border-stone-200">
-        滚轮缩放 · 中键拖拽平移
+      <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 bg-white/90 backdrop-blur rounded-md text-[10px] text-stone-600 font-mono border border-stone-200 shadow-sm">
+        滚轮缩放 · 中键拖拽平移 · 拖拽房间移动 · 四角缩放 · 拖家具到房间内
       </div>
     </div>
   );

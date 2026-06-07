@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Plus, Trash2, Pencil, Check, X, Home } from 'lucide-react';
 import { useDesignerStore } from '@/store/useDesignerStore';
+import { GRID_SIZE } from '@/data/furnitureData';
 
 interface RoomTabsProps {
   onToast?: (msg: string) => void;
@@ -241,7 +242,10 @@ export const RoomTabs = ({ onToast }: RoomTabsProps) => {
               当前：<span className="font-semibold text-stone-800">{currentRoom.name}</span>
             </p>
             <p className="text-[10px] text-stone-400 mt-0.5">
-              {currentRoom.furniture.length} 件家具 · {currentRoom.walls.length} 面墙
+              {currentRoom.furniture.length} 件家具 · {currentRoom.widthGrids}×{currentRoom.heightGrids}格
+            </p>
+            <p className="text-[10px] text-stone-400 mt-0.5">
+              位置({currentRoom.x}, {currentRoom.y}) · {currentRoom.widthGrids * GRID_SIZE}×{currentRoom.heightGrids * GRID_SIZE}px
             </p>
           </div>
         </div>

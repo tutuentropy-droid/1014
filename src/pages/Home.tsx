@@ -5,8 +5,6 @@ import {
   Save,
   Trash2,
   Sparkles,
-  Square,
-  Eraser,
   X,
   Palette,
   Tag,
@@ -22,8 +20,6 @@ import { useDesignerStore } from '@/store/useDesignerStore';
 import type { FurnitureType } from '@/types/furniture';
 import {
   GRID_SIZE,
-  MIN_ROOM_GRIDS,
-  MAX_ROOM_GRIDS,
   MIN_FURNITURE_GRIDS,
   MAX_FURNITURE_GRIDS,
 } from '@/data/furnitureData';
@@ -32,20 +28,13 @@ export default function Home() {
   const {
     viewMode,
     setViewMode,
-    furniture,
-    walls,
+    getAllFurniture,
+    getAutoWalls,
     selectedId,
-    drawMode,
-    roomWidthGrids,
-    roomHeightGrids,
     rooms,
     currentRoomId,
-    setRoomWidthGrids,
-    setRoomHeightGrids,
-    setDrawMode,
     saveLayout,
     clearAll,
-    clearWalls,
     loadLayout,
     selectFurniture,
     removeFurniture,
@@ -60,7 +49,9 @@ export default function Home() {
   const [toast, setToast] = useState<string | null>(null);
   const [paletteDrag, setPaletteDrag] = useState<FurnitureType | null>(null);
 
-  const selectedFurniture = furniture.find((f) => f.id === selectedId) || null;
+  const allFurniture = getAllFurniture();
+  const autoWalls = getAutoWalls();
+  const selectedFurniture = allFurniture.find((f) => f.id === selectedId) || null;
 
   useEffect(() => {
     loadLayout();
@@ -74,8 +65,7 @@ export default function Home() {
   const handleSave = () => {
     saveLayout();
     const totalFurniture = rooms.reduce((sum, r) => sum + r.furniture.length, 0);
-    const totalWalls = rooms.reduce((sum, r) => sum + r.walls.length, 0);
-    showToast(`✓ 已保存 ${rooms.length} 个房间（共 ${totalFurniture} 件家具，${totalWalls} 面墙）`);
+    showToast(`✓ 已保存 ${rooms.length} 个房间（共 ${totalFurniture} 件家具，${autoWalls.length} 面自动墙体）`);
   };
 
   const handleExport2D = () => {
@@ -113,23 +103,12 @@ export default function Home() {
   };
 
   const handleClear = () => {
-    if (furniture.length === 0 && walls.length === 0) {
-      showToast(`${currentRoom?.name || '房间'}已经是空的啦`);
+    if (allFurniture.length === 0) {
+      showToast(`所有房间已经是空的啦`);
       return;
     }
     clearAll();
-    showToast(`「${currentRoom?.name || '房间'}」已清空`);
-  };
-
-  const handleToggleWallMode = () => {
-    if (drawMode === 'wall') {
-      setDrawMode('none');
-      showToast('已退出画墙模式');
-    } else {
-      setDrawMode('wall');
-      selectFurniture(null);
-      showToast('进入画墙模式 · 拖拽绘制墙体');
-    }
+    showToast(`已清空所有房间的家具`);
   };
 
   return (
@@ -145,7 +124,7 @@ export default function Home() {
                 Interior Studio
               </h1>
               <p className="text-sm text-stone-500 mt-1">
-                极简室内设计工具 · 当前房间：
+                多房间户型设计工具 · 共 {rooms.length} 个房间，当前：
                 <span className="font-semibold text-amber-600">
                   {currentRoom?.name || '—'}
                 </span>
@@ -190,103 +169,49 @@ export default function Home() {
               onDragEnd={() => setPaletteDrag(null)}
             />
 
-            {viewMode === '2d' && (
-              <div className="flex flex-col gap-3 p-5 bg-white rounded-2xl shadow-[0_4px_24px_rgba(92,74,61,0.08)] border border-stone-100">
-                <div className="flex items-center gap-2 pb-3 border-b border-stone-100">
-                  <div className="w-1.5 h-6 rounded-full bg-gradient-to-b from-sky-400 to-sky-600" />
-                  <h2 className="text-lg font-semibold text-stone-800 tracking-tight">房间设置</h2>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-medium text-stone-600">房间宽度</label>
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="number"
-                          min={MIN_ROOM_GRIDS}
-                          max={MAX_ROOM_GRIDS}
-                          value={roomWidthGrids}
-                          onChange={(e) =>
-                            setRoomWidthGrids(parseInt(e.target.value) || MIN_ROOM_GRIDS)
-                          }
-                          className="w-14 px-2 py-1 text-xs text-right bg-stone-50 rounded border border-stone-200 focus:border-amber-400 focus:outline-none font-mono"
-                        />
-                        <span className="text-[10px] text-stone-400">格</span>
-                      </div>
-                    </div>
-                    <input
-                      type="range"
-                      min={MIN_ROOM_GRIDS}
-                      max={MAX_ROOM_GRIDS}
-                      value={roomWidthGrids}
-                      onChange={(e) => setRoomWidthGrids(parseInt(e.target.value))}
-                      className="w-full accent-amber-500"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-medium text-stone-600">房间高度</label>
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="number"
-                          min={MIN_ROOM_GRIDS}
-                          max={MAX_ROOM_GRIDS}
-                          value={roomHeightGrids}
-                          onChange={(e) =>
-                            setRoomHeightGrids(parseInt(e.target.value) || MIN_ROOM_GRIDS)
-                          }
-                          className="w-14 px-2 py-1 text-xs text-right bg-stone-50 rounded border border-stone-200 focus:border-amber-400 focus:outline-none font-mono"
-                        />
-                        <span className="text-[10px] text-stone-400">格</span>
-                      </div>
-                    </div>
-                    <input
-                      type="range"
-                      min={MIN_ROOM_GRIDS}
-                      max={MAX_ROOM_GRIDS}
-                      value={roomHeightGrids}
-                      onChange={(e) => setRoomHeightGrids(parseInt(e.target.value))}
-                      className="w-full accent-amber-500"
-                    />
-                  </div>
-
-                  <div className="pt-2 border-t border-stone-100">
-                    <p className="text-[10px] text-stone-400 text-center">
-                      实际尺寸：{roomWidthGrids * GRID_SIZE} × {roomHeightGrids * GRID_SIZE} px
+            <div className="flex flex-col gap-3 p-5 bg-white rounded-2xl shadow-[0_4px_24px_rgba(92,74,61,0.08)] border border-stone-100">
+              <div className="flex items-center gap-2 pb-3 border-b border-stone-100">
+                <div className="w-1.5 h-6 rounded-full bg-gradient-to-b from-sky-400 to-sky-600" />
+                <h2 className="text-lg font-semibold text-stone-800 tracking-tight">操作提示</h2>
+              </div>
+              <ul className="text-xs text-stone-600 space-y-2 leading-relaxed">
+                <li className="flex gap-2">
+                  <span className="text-amber-500 font-bold">·</span>
+                  <span>拖拽房间区域可<span className="font-semibold text-stone-800">移动位置</span></span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-amber-500 font-bold">·</span>
+                  <span>拖拽房间四角可<span className="font-semibold text-stone-800">调整大小</span></span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-amber-500 font-bold">·</span>
+                  <span>点击房间可<span className="font-semibold text-stone-800">选中</span>，F键进入第一人称</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-amber-500 font-bold">·</span>
+                  <span>家具只能在<span className="font-semibold text-stone-800">所属房间</span>内放置</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-amber-500 font-bold">·</span>
+                  <span>滚轮缩放画布，中键拖拽<span className="font-semibold text-stone-800">平移画布</span></span>
+                </li>
+              </ul>
+              {currentRoom && (
+                <div className="pt-3 mt-1 border-t border-stone-100">
+                  <div className="px-3 py-2 rounded-lg bg-sky-50/70 border border-sky-100">
+                    <p className="text-xs text-stone-600">
+                      选中：<span className="font-semibold text-stone-800">{currentRoom.name}</span>
+                    </p>
+                    <p className="text-[10px] text-stone-400 mt-0.5">
+                      尺寸 {currentRoom.widthGrids}×{currentRoom.heightGrids} 格 · {currentRoom.widthGrids * GRID_SIZE}×{currentRoom.heightGrids * GRID_SIZE} px
+                    </p>
+                    <p className="text-[10px] text-stone-400 mt-0.5">
+                      {currentRoom.furniture.length} 件家具
                     </p>
                   </div>
                 </div>
-
-                <div className="pt-3 border-t border-stone-100 flex flex-col gap-2">
-                  <button
-                    onClick={handleToggleWallMode}
-                    className={`flex items-center justify-center gap-1.5 w-full py-2 text-sm font-medium rounded-xl transition-all ${
-                      drawMode === 'wall'
-                        ? 'bg-sky-500 text-white shadow-md shadow-sky-500/25'
-                        : 'bg-stone-100 hover:bg-sky-50 text-stone-700 hover:text-sky-700'
-                    }`}
-                  >
-                    <Square className="w-4 h-4" />
-                    {drawMode === 'wall' ? '画墙中（点击退出）' : '画墙模式'}
-                  </button>
-
-                  {walls.length > 0 && (
-                    <button
-                      onClick={() => {
-                        clearWalls();
-                        showToast('已清除所有墙体');
-                      }}
-                      className="flex items-center justify-center gap-1.5 w-full py-2 text-sm font-medium rounded-xl bg-stone-50 hover:bg-red-50 text-stone-600 hover:text-red-600 border border-stone-200 transition-all"
-                    >
-                      <Eraser className="w-4 h-4" />
-                      清除墙体（{walls.length}）
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </aside>
 
           <main className="flex-1 flex flex-col items-center gap-5">
@@ -328,18 +253,14 @@ export default function Home() {
                 className="flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-red-50 text-stone-700 hover:text-red-600 border border-stone-200 hover:border-red-200 rounded-xl font-medium transition-all duration-200 hover:-translate-y-0.5"
               >
                 <Trash2 className="w-4 h-4" />
-                清空房间
+                清空所有家具
               </button>
               <div className="ml-2 px-3 py-2 bg-white/60 backdrop-blur rounded-xl border border-stone-200 text-sm text-stone-600">
-                <span className="font-semibold text-amber-700">{currentRoom?.name || '—'}</span>
+                <span className="font-semibold text-amber-700">{rooms.length}</span> 个房间
                 {' · '}
-                <span className="font-semibold text-stone-800">{furniture.length}</span> 件家具
-                {walls.length > 0 && (
-                  <>
-                    {' · '}
-                    <span className="font-semibold text-sky-700">{walls.length}</span> 面墙
-                  </>
-                )}
+                <span className="font-semibold text-stone-800">{allFurniture.length}</span> 件家具
+                {' · '}
+                <span className="font-semibold text-sky-700">{autoWalls.length}</span> 面自动墙
               </div>
             </div>
           </main>
