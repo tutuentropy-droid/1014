@@ -17,6 +17,7 @@ import {
 import { FurniturePalette } from '@/components/FurniturePalette';
 import { RoomView2D } from '@/components/RoomView2D';
 import { RoomView3D } from '@/components/RoomView3D';
+import { RoomTabs } from '@/components/RoomTabs';
 import { useDesignerStore } from '@/store/useDesignerStore';
 import type { FurnitureType } from '@/types/furniture';
 import {
@@ -37,6 +38,8 @@ export default function Home() {
     drawMode,
     roomWidthGrids,
     roomHeightGrids,
+    rooms,
+    currentRoomId,
     setRoomWidthGrids,
     setRoomHeightGrids,
     setDrawMode,
@@ -51,6 +54,8 @@ export default function Home() {
     updateFurnitureColor,
     updateFurnitureLabel,
   } = useDesignerStore();
+
+  const currentRoom = rooms.find((r) => r.id === currentRoomId);
 
   const [toast, setToast] = useState<string | null>(null);
   const [paletteDrag, setPaletteDrag] = useState<FurnitureType | null>(null);
@@ -68,7 +73,9 @@ export default function Home() {
 
   const handleSave = () => {
     saveLayout();
-    showToast(`✓ 布局已保存（${furniture.length} 件家具，${walls.length} 面墙）`);
+    const totalFurniture = rooms.reduce((sum, r) => sum + r.furniture.length, 0);
+    const totalWalls = rooms.reduce((sum, r) => sum + r.walls.length, 0);
+    showToast(`✓ 已保存 ${rooms.length} 个房间（共 ${totalFurniture} 件家具，${totalWalls} 面墙）`);
   };
 
   const handleExport2D = () => {
@@ -77,10 +84,11 @@ export default function Home() {
       const dataUrl = capture();
       if (dataUrl) {
         const link = document.createElement('a');
-        link.download = `room-layout-2d-${Date.now()}.png`;
+        const roomName = currentRoom?.name || 'room';
+        link.download = `${roomName}-layout-2d-${Date.now()}.png`;
         link.href = dataUrl;
         link.click();
-        showToast('✓ 2D 布局图已导出');
+        showToast(`✓ 「${roomName}」2D 布局图已导出`);
         return;
       }
     }
@@ -93,10 +101,11 @@ export default function Home() {
       const dataUrl = capture();
       if (dataUrl) {
         const link = document.createElement('a');
-        link.download = `room-screenshot-3d-${Date.now()}.png`;
+        const roomName = currentRoom?.name || 'room';
+        link.download = `${roomName}-screenshot-3d-${Date.now()}.png`;
         link.href = dataUrl;
         link.click();
-        showToast('✓ 3D 截图已导出');
+        showToast(`✓ 「${roomName}」3D 截图已导出`);
         return;
       }
     }
@@ -105,11 +114,11 @@ export default function Home() {
 
   const handleClear = () => {
     if (furniture.length === 0 && walls.length === 0) {
-      showToast('房间已经是空的啦');
+      showToast(`${currentRoom?.name || '房间'}已经是空的啦`);
       return;
     }
     clearAll();
-    showToast('房间已清空');
+    showToast(`「${currentRoom?.name || '房间'}」已清空`);
   };
 
   const handleToggleWallMode = () => {
@@ -135,7 +144,12 @@ export default function Home() {
               <h1 className="font-display text-3xl font-bold text-stone-800 tracking-tight leading-none">
                 Interior Studio
               </h1>
-              <p className="text-sm text-stone-500 mt-1">极简室内设计工具 · 轻松规划你的空间</p>
+              <p className="text-sm text-stone-500 mt-1">
+                极简室内设计工具 · 当前房间：
+                <span className="font-semibold text-amber-600">
+                  {currentRoom?.name || '—'}
+                </span>
+              </p>
             </div>
           </div>
 
@@ -167,6 +181,10 @@ export default function Home() {
 
         <div className="flex gap-6 items-start">
           <aside className="w-[240px] flex-shrink-0 flex flex-col gap-4">
+            <div className="p-5 bg-white rounded-2xl shadow-[0_4px_24px_rgba(92,74,61,0.08)] border border-stone-100">
+              <RoomTabs onToast={showToast} />
+            </div>
+
             <FurniturePalette
               onDragStart={setPaletteDrag}
               onDragEnd={() => setPaletteDrag(null)}
@@ -313,7 +331,8 @@ export default function Home() {
                 清空房间
               </button>
               <div className="ml-2 px-3 py-2 bg-white/60 backdrop-blur rounded-xl border border-stone-200 text-sm text-stone-600">
-                当前放置：
+                <span className="font-semibold text-amber-700">{currentRoom?.name || '—'}</span>
+                {' · '}
                 <span className="font-semibold text-stone-800">{furniture.length}</span> 件家具
                 {walls.length > 0 && (
                   <>

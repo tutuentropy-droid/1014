@@ -34,3 +34,12 @@ export interface CustomFurnitureCatalogEntry {
 
 export type ViewMode = '2d' | '3d';
 export type DrawMode = 'none' | 'wall';
+
+export interface Room {
+  id: string;
+  name: string;
+  furniture: FurnitureItem[];
+  walls: WallItem[];
+  roomWidthGrids: number;
+  roomHeightGrids: number;
+}
