@@ -345,17 +345,17 @@ export default function Home() {
               )}
             </div>
 
-            <div className="flex items-center gap-3 flex-wrap justify-center">
+            <div className="flex items-center gap-2 flex-wrap justify-center">
               <button
                 onClick={() => setShowSmartLayoutDialog(true)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white rounded-xl font-medium shadow-lg shadow-emerald-500/25 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+                className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-emerald-500/25 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
               >
                 <Wand2 className="w-4 h-4" />
                 智能布局
               </button>
               <button
                 onClick={() => setShowMaterialKnowledge(!showMaterialKnowledge)}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl ${
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl ${
                   showMaterialKnowledge
                     ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-violet-500/25'
                     : 'bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-400 hover:to-purple-500 text-white shadow-violet-500/20'
@@ -366,33 +366,33 @@ export default function Home() {
               </button>
               <button
                 onClick={handleSave}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-stone-800 to-stone-700 hover:from-stone-700 hover:to-stone-600 text-white rounded-xl font-medium shadow-lg shadow-stone-700/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+                className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-stone-800 to-stone-700 hover:from-stone-700 hover:to-stone-600 text-white rounded-xl text-sm font-medium shadow-lg shadow-stone-700/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
               >
                 <Save className="w-4 h-4" />
                 保存布局
               </button>
               <button
                 onClick={handleExport2D}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-400 hover:to-sky-500 text-white rounded-xl font-medium shadow-lg shadow-sky-500/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+                className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-400 hover:to-sky-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-sky-500/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
               >
                 <Image className="w-4 h-4" />
                 导出 2D 图
               </button>
               <button
                 onClick={handleExport3D}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-500 to-violet-600 hover:from-violet-400 hover:to-violet-500 text-white rounded-xl font-medium shadow-lg shadow-violet-500/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+                className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-violet-500 to-violet-600 hover:from-violet-400 hover:to-violet-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-violet-500/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
               >
                 <Camera className="w-4 h-4" />
                 导出 3D 截图
               </button>
               <button
                 onClick={handleClear}
-                className="flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-red-50 text-stone-700 hover:text-red-600 border border-stone-200 hover:border-red-200 rounded-xl font-medium transition-all duration-200 hover:-translate-y-0.5"
+                className="flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-red-50 text-stone-700 hover:text-red-600 border border-stone-200 hover:border-red-200 rounded-xl text-sm font-medium transition-all duration-200 hover:-translate-y-0.5"
               >
                 <Trash2 className="w-4 h-4" />
                 清空所有家具
               </button>
-              <div className="ml-2 px-3 py-2 bg-white/60 backdrop-blur rounded-xl border border-stone-200 text-sm text-stone-600">
+              <div className="ml-1 px-3 py-2 bg-white/60 backdrop-blur rounded-xl border border-stone-200 text-xs text-stone-600">
                 <span className="font-semibold text-orange-700">{currentFloor + 1}F</span> · 
                 <span className="font-semibold text-amber-700 ml-1">{rooms.length}</span> 房间
                 {' · '}
@@ -409,11 +409,8 @@ export default function Home() {
             </div>
           </main>
 
-          {(selectedFurniture || selectedWindow || selectedCurtain || selectedWall || showMaterialKnowledge) && (
+          {(selectedFurniture || selectedWindow || selectedCurtain || selectedWall) && (
             <aside className="w-[260px] flex-shrink-0 flex flex-col gap-4">
-              {showMaterialKnowledge && (
-                <MaterialKnowledge onClose={() => setShowMaterialKnowledge(false)} />
-              )}
               {selectedFurniture && (
                 <div className="flex flex-col gap-4 p-5 bg-white rounded-2xl shadow-[0_4px_24px_rgba(92,74,61,0.1)] border border-stone-100">
                   <div className="flex items-center justify-between pb-3 border-b border-stone-100">
@@ -774,6 +771,10 @@ export default function Home() {
             </div>
           </div>
         </div>
+      )}
+
+      {showMaterialKnowledge && (
+        <MaterialKnowledge onClose={() => setShowMaterialKnowledge(false)} />
       )}
 
       {toast && (
