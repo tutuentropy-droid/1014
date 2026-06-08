@@ -446,7 +446,7 @@ export const FLOOR_STYLE_PRESETS: FloorStylePreset[] = [
 
 export const DEFAULT_FLOOR_STYLE_ID: FloorStyleId = 'lightWood';
 
-export const getFloorStyleById = (id: FloorStyleId | undefined): FloorStylePreset => {
+export const getFloorStyleById = (id: string | undefined): FloorStylePreset => {
   if (!id) return FLOOR_STYLE_PRESETS[0];
   return FLOOR_STYLE_PRESETS.find((s) => s.id === id) ?? FLOOR_STYLE_PRESETS[0];
 };

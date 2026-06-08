@@ -9,115 +9,103 @@ import type {
   Room,
   WindowItem,
   CurtainItem,
-  WallOrientation,
   Floor,
-  StaircaseArea,
-  SelectedWall,
-  FloorStyleId,
   FurniturePositionSnapshot,
+  FurnitureStyleVariant,
+  SelectedWall,
 } from '@/types/furniture';
 import {
   FURNITURE_CATALOG,
   DEFAULT_ROOM_WIDTH_GRIDS,
   DEFAULT_ROOM_HEIGHT_GRIDS,
-  MIN_ROOM_GRIDS,
-  MAX_ROOM_GRIDS,
+  computeRoomWidth,
+  computeRoomHeight,
   GRID_SIZE,
-  CANVAS_WIDTH_GRIDS,
-  CANVAS_HEIGHT_GRIDS,
-  ROOM_COLORS,
-  DEFAULT_FURNITURE_TYPES,
-  MAX_FLOORS,
-  FLOOR_HEIGHT,
 } from '@/data/furnitureData';
-import { DEFAULT_FLOOR_STYLE_ID } from '@/data/materialData';
-import { canPlaceFurnitureInRoom, canPlaceRoom, generateWallsForRooms, type GeneratedWall } from '@/utils/collision';
-import { generateSmartLayout } from '@/utils/smartLayout';
+import { canPlaceAt, aabbOverlap } from '@/utils/collision';
 
 interface PersistedState {
-  floors: Floor[];
-  currentFloor: number;
+  rooms: Room[];
   currentRoomId: string;
   customCatalog: Record<string, CustomFurnitureCatalogEntry>;
   viewMode: ViewMode;
-  seeThroughMode: boolean;
-  floorStyleId: FloorStyleId;
+  floors?: Floor[];
+  currentFloor?: number;
+  floorStyleId?: string;
 }
 
 interface DesignState {
-  floors: Floor[];
-  currentFloor: number;
+  rooms: Room[];
   currentRoomId: string;
   furniture: FurnitureItem[];
   walls: WallItem[];
+  windows: WindowItem[];
+  curtains: CurtainItem[];
+  roomWidthGrids: number;
+  roomHeightGrids: number;
   selectedId: string | null;
-  selectedRoomId: string | null;
   selectedWindowId: string | null;
   selectedCurtainId: string | null;
   selectedWall: SelectedWall | null;
+  selectedRoomId: string | null;
   viewMode: ViewMode;
-  seeThroughMode: boolean;
   drawMode: DrawMode;
   customCatalog: Record<string, CustomFurnitureCatalogEntry>;
-  roomWidthGrids: number;
-  roomHeightGrids: number;
-  floorStyleId: FloorStyleId;
+  floors: Floor[];
+  currentFloor: number;
+  seeThroughMode: boolean;
+  floorStyleId: string;
   furniturePositionSnapshot: FurniturePositionSnapshot[] | null;
 
-  getCurrentFloor: () => Floor | undefined;
-  getFloorByLevel: (level: number) => Floor | undefined;
   getCurrentRoom: () => Room | undefined;
-  getRoomById: (id: string) => Room | undefined;
-  getCanvasWidth: () => number;
-  getCanvasHeight: () => number;
   getRoomWidth: () => number;
   getRoomHeight: () => number;
   getCatalogEntry: (type: FurnitureType) => CustomFurnitureCatalogEntry;
   getAllFurnitureTypes: () => FurnitureType[];
+  getVariant: (type: FurnitureType, variantId?: string) => FurnitureStyleVariant | undefined;
+  getResolvedCatalogEntry: (type: FurnitureType) => CustomFurnitureCatalogEntry;
+  getAutoWalls: () => WallItem[];
   getAllFurniture: () => FurnitureItem[];
-  getAllFurnitureForFloor: (level: number) => FurnitureItem[];
-  getAutoWalls: () => GeneratedWall[];
-  getAutoWallsForFloor: (level: number) => GeneratedWall[];
   getAllWindows: () => WindowItem[];
-  getAllWindowsForFloor: (level: number) => WindowItem[];
   getAllCurtains: () => CurtainItem[];
-  getAllCurtainsForFloor: (level: number) => CurtainItem[];
-  getWindowById: (id: string) => WindowItem | undefined;
-  getCurtainById: (id: string) => CurtainItem | undefined;
-  getStaircaseArea: () => StaircaseArea | null;
-  getStaircaseAreaForFloor: (level: number) => StaircaseArea | null;
-  findFloorForRoomId: (roomId: string) => number | undefined;
+  getStaircaseArea: () => { x: number; y: number; width: number; height: number } | null;
+
+  getRoomById: (id: string) => Room | undefined;
+  findFloorForRoomId: (roomId: string) => number;
+  getAllFurnitureForFloor: (floorLevel: number) => FurnitureItem[];
+  getAutoWallsForFloor: (floorLevel: number) => WallItem[];
+  getAllWindowsForFloor: (floorLevel: number) => WindowItem[];
+  getAllCurtainsForFloor: (floorLevel: number) => CurtainItem[];
+  getStaircaseAreaForFloor: (floorLevel: number) => { x: number; y: number; widthGrids: number; heightGrids: number } | null;
 
   setRoomWidthGrids: (grids: number) => void;
   setRoomHeightGrids: (grids: number) => void;
 
   setDrawMode: (mode: DrawMode) => void;
-  setSeeThroughMode: (enabled: boolean) => void;
-  setFloorStyle: (styleId: FloorStyleId) => void;
-  storeFurniturePositions: () => void;
-  restoreFurniturePositions: () => number;
+  addWall: (x: number, y: number, width: number, height: number) => boolean;
+  removeWall: (id: string) => void;
+  clearWalls: () => void;
 
-  addFurniture: (type: FurnitureType, x: number, y: number, roomId: string) => boolean;
+  addFurniture: (type: FurnitureType, x: number, y: number, variantId?: string) => boolean;
   moveFurniture: (id: string, x: number, y: number) => boolean;
   removeFurniture: (id: string) => void;
   selectFurniture: (id: string | null) => void;
+
   updateFurnitureWidth: (id: string, widthGrids: number) => boolean;
   updateFurnitureHeight: (id: string, heightGrids: number) => boolean;
   updateFurnitureColor: (id: string, color: string) => void;
   updateFurnitureLabel: (id: string, label: string) => void;
-  updateFurnitureMaterial: (id: string, materialId: string) => void;
 
-  addWindow: (roomId: string, x: number, y: number, width: number, height: number, wallOrientation: WallOrientation, wallOffset: number, windowWidth: number, windowHeight: number) => boolean;
-  removeWindow: (windowId: string) => void;
   selectWindow: (id: string | null) => void;
-
-  addCurtain: (windowId: string, roomId: string) => boolean;
-  removeCurtain: (curtainId: string) => void;
-  toggleCurtain: (curtainId: string) => void;
+  removeWindow: (id: string) => void;
   selectCurtain: (id: string | null) => void;
-
+  removeCurtain: (id: string) => void;
+  toggleCurtain: (id: string) => void;
+  addCurtain: (windowId: string, roomId: string) => boolean;
   selectWall: (wall: SelectedWall | null) => void;
-  updateWallMaterial: (roomId: string, orientation: WallOrientation, materialId: string, applyToAllWalls?: boolean) => void;
+
+  updateFurnitureMaterial: (furnitureId: string, materialId: string) => void;
+  updateWallMaterial: (roomId: string, orientation: 'left' | 'right' | 'top' | 'bottom', materialId: string, applyToAllWalls?: boolean) => void;
 
   addCustomFurnitureType: (
     typeId: string,
@@ -130,28 +118,31 @@ interface DesignState {
   loadLayout: () => void;
 
   switchRoom: (roomId: string) => void;
-  switchFloor: (level: number) => void;
-  selectRoom: (roomId: string | null) => void;
-  addRoom: (name?: string, x?: number, y?: number, widthGrids?: number, heightGrids?: number) => void;
+  addRoom: (name: string) => void;
   removeRoom: (roomId: string) => void;
   renameRoom: (roomId: string, name: string) => void;
-  moveRoom: (roomId: string, xGrids: number, yGrids: number) => boolean;
-  resizeRoom: (roomId: string, widthGrids: number, heightGrids: number) => boolean;
 
-  setStaircaseArea: (area: StaircaseArea | null) => void;
+  syncRoomToState: (roomId: string) => void;
+  syncStateToRoom: () => void;
 
-  clearRoomFurniture: (roomId: string) => void;
-  applySmartLayout: (roomId: string, mode: 'clear' | 'preserve') => number;
+  setSeeThroughMode: (enabled: boolean) => void;
+  switchFloor: (level: number) => void;
+  setStaircaseArea: (area: { x: number; y: number; width: number; height: number } | null) => void;
+  setFloorStyle: (styleId: string) => void;
 
-  syncRoomFurniture: () => void;
+  clearRoomFurniture: (roomId?: string) => void;
+  applySmartLayout: (roomId?: string, mode?: 'clear' | 'preserve') => number;
+
+  storeFurniturePositions: () => void;
+  restoreFurniturePositions: () => number;
 }
 
-const STORAGE_KEY = 'interior-designer-layout-v5-multifloor';
+const STORAGE_KEY = 'interior-designer-layout-v3';
 
-let counter = 0;
+let furnitureCounter = 0;
 const generateId = (prefix: string) => {
-  counter += 1;
-  return `${prefix}-${Date.now()}-${counter}`;
+  furnitureCounter += 1;
+  return `${prefix}-${Date.now()}-${furnitureCounter}`;
 };
 
 const hexToNumber = (hex: string): number => {
@@ -165,249 +156,69 @@ const hexToNumber = (hex: string): number => {
 const clampRoomGrids = (g: number, min: number, max: number) =>
   Math.max(min, Math.min(max, Math.round(g)));
 
-let colorIndex = 0;
-const nextRoomColor = () => {
-  const color = ROOM_COLORS[colorIndex % ROOM_COLORS.length];
-  colorIndex += 1;
-  return color;
+const createDefaultRoom = (id: string, name: string): Room => ({
+  id,
+  name,
+  x: 2,
+  y: 2,
+  widthGrids: DEFAULT_ROOM_WIDTH_GRIDS,
+  heightGrids: DEFAULT_ROOM_HEIGHT_GRIDS,
+  furniture: [],
+  walls: [],
+  roomWidthGrids: DEFAULT_ROOM_WIDTH_GRIDS,
+  roomHeightGrids: DEFAULT_ROOM_HEIGHT_GRIDS,
+});
+
+const getDefaultRooms = (): Room[] => {
+  const livingId = generateId('room');
+  const bedroomId = generateId('room');
+  const kitchenId = generateId('room');
+  return [
+    createDefaultRoom(livingId, '客厅'),
+    createDefaultRoom(bedroomId, '卧室'),
+    createDefaultRoom(kitchenId, '厨房'),
+  ];
 };
 
-const collectAllFurniture = (floors: Floor[]): FurnitureItem[] => {
-  return floors.flatMap((f) => f.rooms.flatMap((r) => r.furniture));
-};
-
-const collectAllFurnitureForFloor = (floor: Floor): FurnitureItem[] => {
-  return floor.rooms.flatMap((r) => r.furniture);
-};
-
-const collectAllWindowsForFloor = (floor: Floor): WindowItem[] => {
-  return floor.rooms.flatMap((r) => r.windows);
-};
-
-const collectAllCurtainsForFloor = (floor: Floor): CurtainItem[] => {
-  return floor.rooms.flatMap((r) => r.curtains);
-};
-
-const findFloorForRoomId = (floors: Floor[], roomId: string): Floor | undefined => {
-  return floors.find((f) => f.rooms.some((r) => r.id === roomId));
-};
-
-const getDefaultRoomsForFloor = (floorLevel: number): Room[] => {
-  colorIndex = 0;
-  if (floorLevel === 0) {
-    const livingRoom: Room = {
-      id: generateId('room'),
-      name: '客厅',
-      x: 2,
-      y: 2,
-      widthGrids: 14,
-      heightGrids: 10,
-      color: nextRoomColor(),
-      furniture: [],
-      windows: [],
-      curtains: [],
-      roomWidthGrids: 14,
-      roomHeightGrids: 10,
-      wallMaterials: {},
-    };
-    const bedroom: Room = {
-      id: generateId('room'),
-      name: '卧室',
-      x: 17,
-      y: 2,
-      widthGrids: 10,
-      heightGrids: 10,
-      color: nextRoomColor(),
-      furniture: [],
-      windows: [],
-      curtains: [],
-      roomWidthGrids: 10,
-      roomHeightGrids: 10,
-      wallMaterials: {},
-    };
-    const kitchen: Room = {
-      id: generateId('room'),
-      name: '厨房',
-      x: 2,
-      y: 13,
-      widthGrids: 10,
-      heightGrids: 8,
-      color: nextRoomColor(),
-      furniture: [],
-      windows: [],
-      curtains: [],
-      roomWidthGrids: 10,
-      roomHeightGrids: 8,
-      wallMaterials: {},
-    };
-    const bathroom: Room = {
-      id: generateId('room'),
-      name: '卫生间',
-      x: 13,
-      y: 13,
-      widthGrids: 6,
-      heightGrids: 8,
-      color: nextRoomColor(),
-      furniture: [],
-      windows: [],
-      curtains: [],
-      roomWidthGrids: 6,
-      roomHeightGrids: 8,
-      wallMaterials: {},
-    };
-    return [livingRoom, bedroom, kitchen, bathroom];
-  } else if (floorLevel === 1) {
-    const masterBedroom: Room = {
-      id: generateId('room'),
-      name: '主卧',
-      x: 2,
-      y: 2,
-      widthGrids: 14,
-      heightGrids: 10,
-      color: nextRoomColor(),
-      furniture: [],
-      windows: [],
-      curtains: [],
-      roomWidthGrids: 14,
-      roomHeightGrids: 10,
-      wallMaterials: {},
-    };
-    const study: Room = {
-      id: generateId('room'),
-      name: '书房',
-      x: 17,
-      y: 2,
-      widthGrids: 10,
-      heightGrids: 10,
-      color: nextRoomColor(),
-      furniture: [],
-      windows: [],
-      curtains: [],
-      roomWidthGrids: 10,
-      roomHeightGrids: 10,
-      wallMaterials: {},
-    };
-    const bathroom2: Room = {
-      id: generateId('room'),
-      name: '卫生间',
-      x: 2,
-      y: 13,
-      widthGrids: 8,
-      heightGrids: 6,
-      color: nextRoomColor(),
-      furniture: [],
-      windows: [],
-      curtains: [],
-      roomWidthGrids: 8,
-      roomHeightGrids: 6,
-      wallMaterials: {},
-    };
-    return [masterBedroom, study, bathroom2];
-  } else {
-    const terrace: Room = {
-      id: generateId('room'),
-      name: '露台',
-      x: 2,
-      y: 2,
-      widthGrids: 14,
-      heightGrids: 10,
-      color: nextRoomColor(),
-      furniture: [],
-      windows: [],
-      curtains: [],
-      roomWidthGrids: 14,
-      roomHeightGrids: 10,
-      wallMaterials: {},
-    };
-    const recreation: Room = {
-      id: generateId('room'),
-      name: '娱乐室',
-      x: 17,
-      y: 2,
-      widthGrids: 10,
-      heightGrids: 14,
-      color: nextRoomColor(),
-      furniture: [],
-      windows: [],
-      curtains: [],
-      roomWidthGrids: 10,
-      roomHeightGrids: 14,
-      wallMaterials: {},
-    };
-    return [terrace, recreation];
-  }
-};
-
-const getDefaultFloors = (): Floor[] => {
-  const floors: Floor[] = [];
-  for (let i = 0; i < MAX_FLOORS; i++) {
-    const defaultStaircase: StaircaseArea | null = i < MAX_FLOORS - 1 ? {
-      x: 28,
-      y: 2,
-      widthGrids: 4,
-      heightGrids: 4,
-    } : null;
-    floors.push({
-      id: generateId('floor'),
-      level: i,
-      rooms: getDefaultRoomsForFloor(i),
-      staircaseArea: defaultStaircase,
-    });
-  }
-  return floors;
-};
+const getDefaultFloors = (rooms: Room[]): Floor[] => [
+  {
+    id: generateId('floor'),
+    level: 1,
+    name: '一层',
+    rooms,
+  },
+];
 
 export const useDesignerStore = create<DesignState>((set, get) => ({
-  floors: [],
-  currentFloor: 0,
+  rooms: [],
   currentRoomId: '',
   furniture: [],
   walls: [],
+  windows: [],
+  curtains: [],
+  roomWidthGrids: DEFAULT_ROOM_WIDTH_GRIDS,
+  roomHeightGrids: DEFAULT_ROOM_HEIGHT_GRIDS,
   selectedId: null,
-  selectedRoomId: null,
   selectedWindowId: null,
   selectedCurtainId: null,
   selectedWall: null,
+  selectedRoomId: null,
   viewMode: '2d',
-  seeThroughMode: false,
   drawMode: 'none',
   customCatalog: {},
-  roomWidthGrids: DEFAULT_ROOM_WIDTH_GRIDS,
-  roomHeightGrids: DEFAULT_ROOM_HEIGHT_GRIDS,
-  floorStyleId: DEFAULT_FLOOR_STYLE_ID,
+  floors: [],
+  currentFloor: 1,
+  seeThroughMode: false,
+  floorStyleId: 'lightWood',
   furniturePositionSnapshot: null,
 
-  getCurrentFloor: () => {
-    const { floors, currentFloor } = get();
-    return floors.find((f) => f.level === currentFloor);
-  },
-
-  getFloorByLevel: (level: number) => {
-    return get().floors.find((f) => f.level === level);
-  },
-
   getCurrentRoom: () => {
-    const { floors, currentRoomId } = get();
-    for (const floor of floors) {
-      const room = floor.rooms.find((r) => r.id === currentRoomId);
-      if (room) return room;
-    }
-    return undefined;
+    const { rooms, currentRoomId } = get();
+    return rooms.find((r) => r.id === currentRoomId);
   },
 
-  getRoomById: (id: string) => {
-    for (const floor of get().floors) {
-      const room = floor.rooms.find((r) => r.id === id);
-      if (room) return room;
-    }
-    return undefined;
-  },
-
-  getCanvasWidth: () => CANVAS_WIDTH_GRIDS * GRID_SIZE,
-  getCanvasHeight: () => CANVAS_HEIGHT_GRIDS * GRID_SIZE,
-
-  getRoomWidth: () => get().roomWidthGrids * GRID_SIZE,
-  getRoomHeight: () => get().roomHeightGrids * GRID_SIZE,
+  getRoomWidth: () => computeRoomWidth(get().roomWidthGrids),
+  getRoomHeight: () => computeRoomHeight(get().roomHeightGrids),
 
   getCatalogEntry: (type: FurnitureType) => {
     const { customCatalog } = get();
@@ -424,708 +235,327 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
     };
   },
 
-  getAllFurnitureTypes: () => {
-    const { customCatalog } = get();
-    return [...DEFAULT_FURNITURE_TYPES, ...Object.keys(customCatalog)];
-  },
-
-  getAllFurniture: () => collectAllFurniture(get().floors),
-  getAllFurnitureForFloor: (level: number) => {
-    const floor = get().getFloorByLevel(level);
-    return floor ? collectAllFurnitureForFloor(floor) : [];
-  },
-
-  getAutoWalls: () => {
-    const floor = get().getCurrentFloor();
-    return floor ? generateWallsForRooms(floor.rooms) : [];
-  },
-  getAutoWallsForFloor: (level: number) => {
-    const floor = get().getFloorByLevel(level);
-    return floor ? generateWallsForRooms(floor.rooms) : [];
-  },
-
-  getAllWindows: () => {
-    const floor = get().getCurrentFloor();
-    return floor ? collectAllWindowsForFloor(floor) : [];
-  },
-  getAllWindowsForFloor: (level: number) => {
-    const floor = get().getFloorByLevel(level);
-    return floor ? collectAllWindowsForFloor(floor) : [];
-  },
-
-  getAllCurtains: () => {
-    const floor = get().getCurrentFloor();
-    return floor ? collectAllCurtainsForFloor(floor) : [];
-  },
-  getAllCurtainsForFloor: (level: number) => {
-    const floor = get().getFloorByLevel(level);
-    return floor ? collectAllCurtainsForFloor(floor) : [];
-  },
-
-  getWindowById: (id: string) => {
-    for (const floor of get().floors) {
-      const win = collectAllWindowsForFloor(floor).find((w) => w.id === id);
-      if (win) return win;
+  getVariant: (type: FurnitureType, variantId?: string) => {
+    const entry = get().getCatalogEntry(type);
+    if (!entry.variants || entry.variants.length === 0) return undefined;
+    if (!variantId) {
+      return entry.defaultVariantId
+        ? entry.variants.find((v) => v.id === entry.defaultVariantId)
+        : entry.variants[0];
     }
-    return undefined;
-  },
-  getCurtainById: (id: string) => {
-    for (const floor of get().floors) {
-      const curtain = collectAllCurtainsForFloor(floor).find((c) => c.id === id);
-      if (curtain) return curtain;
-    }
-    return undefined;
+    return entry.variants.find((v) => v.id === variantId);
   },
 
-  getStaircaseArea: () => {
-    const floor = get().getCurrentFloor();
-    return floor ? floor.staircaseArea : null;
+  getResolvedCatalogEntry: (type: FurnitureType) => {
+    return get().getCatalogEntry(type);
   },
-  getStaircaseAreaForFloor: (level: number) => {
-    const floor = get().getFloorByLevel(level);
-    return floor ? floor.staircaseArea : null;
+
+  getAutoWalls: () => get().walls,
+  getAllFurniture: () => get().furniture,
+  getAllWindows: () => get().windows,
+  getAllCurtains: () => get().curtains,
+  getStaircaseArea: () => null,
+
+  getRoomById: (id: string) => {
+    const { floors } = get();
+    for (const floor of floors) {
+      const room = floor.rooms.find((r) => r.id === id);
+      if (room) return room;
+    }
+    return get().rooms.find((r) => r.id === id);
   },
+
   findFloorForRoomId: (roomId: string) => {
     const { floors } = get();
-    const found = floors.find((f) => f.rooms.some((r) => r.id === roomId));
-    return found ? found.level : undefined;
+    for (const floor of floors) {
+      if (floor.rooms.some((r) => r.id === roomId)) {
+        return floor.level;
+      }
+    }
+    return 1;
+  },
+
+  getAllFurnitureForFloor: (floorLevel: number) => {
+    const { floors } = get();
+    const floor = floors.find((f) => f.level === floorLevel);
+    if (!floor) return [];
+    return floor.rooms.flatMap((r) => r.furniture);
+  },
+
+  getAutoWallsForFloor: (_floorLevel: number) => {
+    return get().walls;
+  },
+
+  getAllWindowsForFloor: (_floorLevel: number) => {
+    return get().windows;
+  },
+
+  getAllCurtainsForFloor: (_floorLevel: number) => {
+    return get().curtains;
+  },
+
+  getStaircaseAreaForFloor: (floorLevel: number) => {
+    const { floors } = get();
+    const floor = floors.find((f) => f.level === floorLevel);
+    return floor?.staircaseArea ?? null;
+  },
+
+  getAllFurnitureTypes: () => {
+    const { customCatalog } = get();
+    const defaults: FurnitureType[] = ['bed', 'sofa', 'table', 'chair', 'plant', 'tvcabinet', 'wardrobe', 'bookshelf'];
+    return [...defaults, ...Object.keys(customCatalog)];
+  },
+
+  syncRoomToState: (roomId: string) => {
+    const room = get().rooms.find((r) => r.id === roomId);
+    if (room) {
+      set({
+        currentRoomId: room.id,
+        furniture: room.furniture,
+        walls: room.walls,
+        roomWidthGrids: room.roomWidthGrids,
+        roomHeightGrids: room.roomHeightGrids,
+        selectedId: null,
+        selectedWindowId: null,
+        selectedCurtainId: null,
+        drawMode: 'none',
+      });
+    }
+  },
+
+  syncStateToRoom: () => {
+    const { currentRoomId, furniture, walls, roomWidthGrids, roomHeightGrids, rooms } = get();
+    set({
+      rooms: rooms.map((r) =>
+        r.id === currentRoomId
+          ? { ...r, furniture, walls, roomWidthGrids, roomHeightGrids }
+          : r
+      ),
+    });
   },
 
   setRoomWidthGrids: (grids: number) => {
-    const clamped = clampRoomGrids(grids, MIN_ROOM_GRIDS, MAX_ROOM_GRIDS);
+    const clamped = clampRoomGrids(grids, 8, 30);
     set({ roomWidthGrids: clamped });
+    get().syncStateToRoom();
   },
 
   setRoomHeightGrids: (grids: number) => {
-    const clamped = clampRoomGrids(grids, MIN_ROOM_GRIDS, MAX_ROOM_GRIDS);
+    const clamped = clampRoomGrids(grids, 8, 30);
     set({ roomHeightGrids: clamped });
+    get().syncStateToRoom();
   },
 
   setDrawMode: (mode: DrawMode) => set({ drawMode: mode }),
-  setSeeThroughMode: (enabled: boolean) => set({ seeThroughMode: enabled }),
-  setFloorStyle: (styleId: FloorStyleId) => set({ floorStyleId: styleId }),
 
-  storeFurniturePositions: () => {
-    const allFurniture = collectAllFurniture(get().floors);
-    const snapshot: FurniturePositionSnapshot[] = allFurniture.map((f) => ({
-      id: f.id,
-      x: f.x,
-      y: f.y,
-    }));
-    set({ furniturePositionSnapshot: snapshot });
+  addWall: (x: number, y: number, width: number, height: number) => {
+    const { walls, furniture, getRoomWidth, getRoomHeight } = get();
+    const roomW = getRoomWidth();
+    const roomH = getRoomHeight();
+    if (width < GRID_SIZE / 2 || height < GRID_SIZE / 2) return false;
+    if (x < 0 || y < 0) return false;
+    if (x + width > roomW || y + height > roomH) return false;
+    const rect = { x, y, width, height };
+    for (const w of walls) {
+      if (aabbOverlap(rect, w)) return false;
+    }
+    for (const f of furniture) {
+      if (aabbOverlap(rect, f)) return false;
+    }
+    const wall: WallItem = {
+      id: generateId('wall'),
+      x,
+      y,
+      width,
+      height,
+      roomId: get().currentRoomId,
+    };
+    set({ walls: [...walls, wall] });
+    get().syncStateToRoom();
+    return true;
   },
 
-  restoreFurniturePositions: () => {
-    const { furniturePositionSnapshot, floors } = get();
-    if (!furniturePositionSnapshot || furniturePositionSnapshot.length === 0) return 0;
-    const posMap = new Map(furniturePositionSnapshot.map((s) => [s.id, s]));
-    let restored = 0;
-    const newFloors = floors.map((floor) => ({
-      ...floor,
-      rooms: floor.rooms.map((room) => ({
-        ...room,
-        furniture: room.furniture.map((f) => {
-          const snap = posMap.get(f.id);
-          if (snap) {
-            restored++;
-            return { ...f, x: snap.x, y: snap.y };
-          }
-          return f;
-        }),
-      })),
-    }));
-    set({ floors: newFloors });
-    get().syncRoomFurniture();
-    return restored;
+  removeWall: (id: string) => {
+    set({ walls: get().walls.filter((w) => w.id !== id) });
+    get().syncStateToRoom();
   },
 
-  syncRoomFurniture: () => {
-    set({ furniture: collectAllFurniture(get().floors) });
+  clearWalls: () => {
+    set({ walls: [] });
+    get().syncStateToRoom();
   },
 
-  addFurniture: (type: FurnitureType, x: number, y: number, roomId: string) => {
+  addFurniture: (type: FurnitureType, x: number, y: number, variantId?: string) => {
     const catalog = get().getCatalogEntry(type);
-    const floors = get().floors;
-    const floor = findFloorForRoomId(floors, roomId);
-    if (!floor) return false;
-    const room = floor.rooms.find((r) => r.id === roomId);
-    if (!room) return false;
-
+    const variant = get().getVariant(type, variantId);
+    const effWidth = variant?.width ?? catalog.width;
+    const effHeight = variant?.height ?? catalog.height;
     const candidate = {
       x,
       y,
-      width: catalog.width,
-      height: catalog.height,
+      width: effWidth,
+      height: effHeight,
     };
-    const allFurniture = collectAllFurnitureForFloor(floor);
-    const autoWalls = generateWallsForRooms(floor.rooms) as unknown as WallItem[];
-
-    if (!canPlaceFurnitureInRoom(candidate, room, allFurniture, autoWalls)) return false;
-
-    if (floor.staircaseArea) {
-      const sx = floor.staircaseArea.x * GRID_SIZE;
-      const sy = floor.staircaseArea.y * GRID_SIZE;
-      const sw = floor.staircaseArea.widthGrids * GRID_SIZE;
-      const sh = floor.staircaseArea.heightGrids * GRID_SIZE;
-      if (
-        candidate.x < sx + sw &&
-        candidate.x + candidate.width > sx &&
-        candidate.y < sy + sh &&
-        candidate.y + candidate.height > sy
-      ) {
-        return false;
-      }
-    }
-
+    const { furniture, walls, getRoomWidth, getRoomHeight } = get();
+    const roomW = getRoomWidth();
+    const roomH = getRoomHeight();
+    if (!canPlaceAt(candidate, furniture, walls, undefined, roomW, roomH)) return false;
     const item: FurnitureItem = {
       id: generateId('furniture'),
       type,
       x,
       y,
-      width: catalog.width,
-      height: catalog.height,
-      color: catalog.color,
-      label: catalog.label,
-      roomId: room.id,
+      width: effWidth,
+      height: effHeight,
+      color: variant?.color ?? catalog.color,
+      label: variant?.label ?? catalog.label,
+      variantId,
+      roomId: get().currentRoomId,
     };
-
-    set({
-      floors: floors.map((f) =>
-        f.id === floor.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === room.id ? { ...r, furniture: [...r.furniture, item] } : r
-              ),
-            }
-          : f
-      ),
-      selectedId: item.id,
-      selectedRoomId: room.id,
-    });
-    get().syncRoomFurniture();
+    set({ furniture: [...furniture, item], selectedId: item.id });
+    get().syncStateToRoom();
     return true;
   },
 
   moveFurniture: (id: string, x: number, y: number) => {
-    const floors = get().floors;
-    let targetFloor: Floor | undefined;
-    let target: FurnitureItem | undefined;
-    for (const floor of floors) {
-      for (const room of floor.rooms) {
-        const found = room.furniture.find((f) => f.id === id);
-        if (found) {
-          target = found;
-          targetFloor = floor;
-          break;
-        }
-      }
-      if (target) break;
-    }
-    if (!target || !targetFloor) return false;
-
-    const room = targetFloor.rooms.find((r) => r.id === target!.roomId);
-    if (!room) return false;
-
+    const { furniture, walls, getRoomWidth, getRoomHeight } = get();
+    const target = furniture.find((f) => f.id === id);
+    if (!target) return false;
     const candidate = { x, y, width: target.width, height: target.height };
-    const allFurniture = collectAllFurnitureForFloor(targetFloor);
-    const autoWalls = generateWallsForRooms(targetFloor.rooms) as unknown as WallItem[];
-
-    if (!canPlaceFurnitureInRoom(candidate, room, allFurniture, autoWalls, id)) return false;
-
-    if (targetFloor.staircaseArea) {
-      const sx = targetFloor.staircaseArea.x * GRID_SIZE;
-      const sy = targetFloor.staircaseArea.y * GRID_SIZE;
-      const sw = targetFloor.staircaseArea.widthGrids * GRID_SIZE;
-      const sh = targetFloor.staircaseArea.heightGrids * GRID_SIZE;
-      if (
-        candidate.x < sx + sw &&
-        candidate.x + candidate.width > sx &&
-        candidate.y < sy + sh &&
-        candidate.y + candidate.height > sy
-      ) {
-        return false;
-      }
-    }
-
+    const roomW = getRoomWidth();
+    const roomH = getRoomHeight();
+    if (!canPlaceAt(candidate, furniture, walls, id, roomW, roomH)) return false;
     set({
-      floors: floors.map((f) =>
-        f.id === targetFloor!.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === room.id
-                  ? {
-                      ...r,
-                      furniture: r.furniture.map((f) => (f.id === id ? { ...f, x, y } : f)),
-                    }
-                  : r
-              ),
-            }
-          : f
-      ),
+      furniture: furniture.map((f) => (f.id === id ? { ...f, x, y } : f)),
     });
-    get().syncRoomFurniture();
+    get().syncStateToRoom();
     return true;
   },
 
   removeFurniture: (id: string) => {
-    const floors = get().floors;
-    let targetFloor: Floor | undefined;
-    let target: FurnitureItem | undefined;
-    for (const floor of floors) {
-      for (const room of floor.rooms) {
-        const found = room.furniture.find((f) => f.id === id);
-        if (found) {
-          target = found;
-          targetFloor = floor;
-          break;
-        }
-      }
-      if (target) break;
-    }
-    if (!target || !targetFloor) return;
-
+    const { furniture, selectedId } = get();
     set({
-      floors: floors.map((f) =>
-        f.id === targetFloor!.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === target!.roomId
-                  ? { ...r, furniture: r.furniture.filter((f) => f.id !== id) }
-                  : r
-              ),
-            }
-          : f
-      ),
-      selectedId: get().selectedId === id ? null : get().selectedId,
+      furniture: furniture.filter((f) => f.id !== id),
+      selectedId: selectedId === id ? null : selectedId,
     });
-    get().syncRoomFurniture();
-  },
-
-  updateFurnitureWidth: (id: string, widthGrids: number) => {
-    const floors = get().floors;
-    let targetFloor: Floor | undefined;
-    let target: FurnitureItem | undefined;
-    for (const floor of floors) {
-      for (const room of floor.rooms) {
-        const found = room.furniture.find((f) => f.id === id);
-        if (found) {
-          target = found;
-          targetFloor = floor;
-          break;
-        }
-      }
-      if (target) break;
-    }
-    if (!target || !targetFloor) return false;
-
-    const room = targetFloor.rooms.find((r) => r.id === target!.roomId);
-    if (!room) return false;
-
-    const newWidth = Math.max(1, Math.min(6, Math.round(widthGrids))) * GRID_SIZE;
-    const candidate = { x: target.x, y: target.y, width: newWidth, height: target.height };
-    const autoWalls = generateWallsForRooms(targetFloor.rooms) as unknown as WallItem[];
-    const allFurniture = collectAllFurnitureForFloor(targetFloor);
-
-    if (!canPlaceFurnitureInRoom(candidate, room, allFurniture, autoWalls, id)) return false;
-
-    set({
-      floors: floors.map((f) =>
-        f.id === targetFloor!.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === room.id
-                  ? {
-                      ...r,
-                      furniture: r.furniture.map((f) => (f.id === id ? { ...f, width: newWidth } : f)),
-                    }
-                  : r
-              ),
-            }
-          : f
-      ),
-    });
-    get().syncRoomFurniture();
-    return true;
-  },
-
-  updateFurnitureHeight: (id: string, heightGrids: number) => {
-    const floors = get().floors;
-    let targetFloor: Floor | undefined;
-    let target: FurnitureItem | undefined;
-    for (const floor of floors) {
-      for (const room of floor.rooms) {
-        const found = room.furniture.find((f) => f.id === id);
-        if (found) {
-          target = found;
-          targetFloor = floor;
-          break;
-        }
-      }
-      if (target) break;
-    }
-    if (!target || !targetFloor) return false;
-
-    const room = targetFloor.rooms.find((r) => r.id === target!.roomId);
-    if (!room) return false;
-
-    const newHeight = Math.max(1, Math.min(6, Math.round(heightGrids))) * GRID_SIZE;
-    const candidate = { x: target.x, y: target.y, width: target.width, height: newHeight };
-    const autoWalls = generateWallsForRooms(targetFloor.rooms) as unknown as WallItem[];
-    const allFurniture = collectAllFurnitureForFloor(targetFloor);
-
-    if (!canPlaceFurnitureInRoom(candidate, room, allFurniture, autoWalls, id)) return false;
-
-    set({
-      floors: floors.map((f) =>
-        f.id === targetFloor!.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === room.id
-                  ? {
-                      ...r,
-                      furniture: r.furniture.map((f) => (f.id === id ? { ...f, height: newHeight } : f)),
-                    }
-                  : r
-              ),
-            }
-          : f
-      ),
-    });
-    get().syncRoomFurniture();
-    return true;
-  },
-
-  updateFurnitureColor: (id: string, color: string) => {
-    const floors = get().floors;
-    let targetFloor: Floor | undefined;
-    let target: FurnitureItem | undefined;
-    for (const floor of floors) {
-      for (const room of floor.rooms) {
-        const found = room.furniture.find((f) => f.id === id);
-        if (found) {
-          target = found;
-          targetFloor = floor;
-          break;
-        }
-      }
-      if (target) break;
-    }
-    if (!target || !targetFloor) return;
-    set({
-      floors: floors.map((f) =>
-        f.id === targetFloor!.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === target!.roomId
-                  ? { ...r, furniture: r.furniture.map((f) => (f.id === id ? { ...f, color } : f)) }
-                  : r
-              ),
-            }
-          : f
-      ),
-    });
-    get().syncRoomFurniture();
-  },
-
-  updateFurnitureLabel: (id: string, label: string) => {
-    const floors = get().floors;
-    let targetFloor: Floor | undefined;
-    let target: FurnitureItem | undefined;
-    for (const floor of floors) {
-      for (const room of floor.rooms) {
-        const found = room.furniture.find((f) => f.id === id);
-        if (found) {
-          target = found;
-          targetFloor = floor;
-          break;
-        }
-      }
-      if (target) break;
-    }
-    if (!target || !targetFloor) return;
-    set({
-      floors: floors.map((f) =>
-        f.id === targetFloor!.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === target!.roomId
-                  ? { ...r, furniture: r.furniture.map((f) => (f.id === id ? { ...f, label } : f)) }
-                  : r
-              ),
-            }
-          : f
-      ),
-    });
-    get().syncRoomFurniture();
-  },
-
-  updateFurnitureMaterial: (id: string, materialId: string) => {
-    const floors = get().floors;
-    let targetFloor: Floor | undefined;
-    let target: FurnitureItem | undefined;
-    for (const floor of floors) {
-      for (const room of floor.rooms) {
-        const found = room.furniture.find((f) => f.id === id);
-        if (found) {
-          target = found;
-          targetFloor = floor;
-          break;
-        }
-      }
-      if (target) break;
-    }
-    if (!target || !targetFloor) return;
-    set({
-      floors: floors.map((f) =>
-        f.id === targetFloor!.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === target!.roomId
-                  ? { ...r, furniture: r.furniture.map((f) => (f.id === id ? { ...f, materialId } : f)) }
-                  : r
-              ),
-            }
-          : f
-      ),
-    });
-    get().syncRoomFurniture();
-  },
-
-  selectWall: (wall) => {
-    set({
-      selectedWall: wall,
-      selectedId: null,
-      selectedWindowId: null,
-      selectedCurtainId: null,
-    });
-  },
-
-  updateWallMaterial: (roomId: string, orientation: WallOrientation, materialId: string, applyToAllWalls = false) => {
-    const floors = get().floors;
-    const floor = findFloorForRoomId(floors, roomId);
-    if (!floor) return;
-    set({
-      floors: floors.map((f) =>
-        f.id === floor.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) => {
-                if (r.id !== roomId) return r;
-                const currentMats = r.wallMaterials ?? {};
-                if (applyToAllWalls) {
-                  return {
-                    ...r,
-                    wallMaterials: {
-                      top: materialId,
-                      bottom: materialId,
-                      left: materialId,
-                      right: materialId,
-                    },
-                  };
-                }
-                return {
-                  ...r,
-                  wallMaterials: {
-                    ...currentMats,
-                    [orientation]: materialId,
-                  },
-                };
-              }),
-            }
-          : f
-      ),
-    });
+    get().syncStateToRoom();
   },
 
   selectFurniture: (id: string | null) => set({ selectedId: id, selectedWindowId: null, selectedCurtainId: null, selectedWall: null }),
 
-  selectWindow: (id) => {
-    set({ selectedWindowId: id, selectedId: null, selectedCurtainId: null, selectedWall: null });
-  },
-
-  selectCurtain: (id) => {
-    set({ selectedCurtainId: id, selectedId: null, selectedWindowId: null, selectedWall: null });
-  },
-
-  addWindow: (roomId, x, y, width, height, wallOrientation, wallOffset, windowWidth, windowHeight) => {
-    const floors = get().floors;
-    const floor = findFloorForRoomId(floors, roomId);
-    if (!floor) return false;
-    const room = floor.rooms.find((r) => r.id === roomId);
-    if (!room) return false;
-
-    const newWindow: WindowItem = {
-      id: generateId('window'),
-      roomId,
-      x,
-      y,
-      width,
-      height,
-      wallOrientation,
-      wallOffset,
-      windowWidth,
-      windowHeight,
-    };
-
+  selectWindow: (id: string | null) => set({ selectedWindowId: id, selectedId: null, selectedCurtainId: null, selectedWall: null }),
+  removeWindow: (id: string) => {
     set({
-      floors: floors.map((f) =>
-        f.id === floor.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === roomId ? { ...r, windows: [...r.windows, newWindow] } : r
-              ),
-            }
-          : f
-      ),
-      selectedWindowId: newWindow.id,
-      selectedRoomId: roomId,
-    });
-    return true;
-  },
-
-  removeWindow: (windowId) => {
-    const floors = get().floors;
-    let targetFloor: Floor | undefined;
-    let targetRoom: Room | undefined;
-    for (const floor of floors) {
-      for (const room of floor.rooms) {
-        if (room.windows.some((w) => w.id === windowId)) {
-          targetFloor = floor;
-          targetRoom = room;
-          break;
-        }
-      }
-      if (targetFloor) break;
-    }
-    if (!targetFloor || !targetRoom) return;
-    set({
-      floors: floors.map((f) =>
-        f.id === targetFloor!.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === targetRoom!.id
-                  ? {
-                      ...r,
-                      windows: r.windows.filter((w) => w.id !== windowId),
-                      curtains: r.curtains.filter((c) => c.windowId !== windowId),
-                    }
-                  : r
-              ),
-            }
-          : f
-      ),
-      selectedWindowId: get().selectedWindowId === windowId ? null : get().selectedWindowId,
-      selectedCurtainId: get().getAllCurtains().find((c) => c.windowId === windowId)?.id === get().selectedCurtainId
-        ? null
-        : get().selectedCurtainId,
+      windows: get().windows.filter((w) => w.id !== id),
+      selectedWindowId: get().selectedWindowId === id ? null : get().selectedWindowId,
     });
   },
-
-  addCurtain: (windowId, roomId) => {
-    const floors = get().floors;
-    const floor = findFloorForRoomId(floors, roomId);
-    if (!floor) return false;
-    const room = floor.rooms.find((r) => r.id === roomId);
-    if (!room) return false;
-    if (room.curtains.some((c) => c.windowId === windowId)) return false;
-
-    const newCurtain: CurtainItem = {
+  selectCurtain: (id: string | null) => set({ selectedCurtainId: id, selectedId: null, selectedWindowId: null, selectedWall: null }),
+  removeCurtain: (id: string) => {
+    set({
+      curtains: get().curtains.filter((c) => c.id !== id),
+      selectedCurtainId: get().selectedCurtainId === id ? null : get().selectedCurtainId,
+    });
+  },
+  toggleCurtain: (id: string) => {
+    set({
+      curtains: get().curtains.map((c) => (c.id === id ? { ...c, isOpen: !c.isOpen } : c)),
+    });
+  },
+  addCurtain: (windowId: string, roomId: string) => {
+    const existing = get().curtains.find((c) => c.windowId === windowId);
+    if (existing) return false;
+    const curtain: CurtainItem = {
       id: generateId('curtain'),
       windowId,
       roomId,
       isOpen: false,
     };
+    set({ curtains: [...get().curtains, curtain] });
+    return true;
+  },
+  selectWall: (wall: SelectedWall | null) => set({ selectedWall: wall, selectedId: null, selectedWindowId: null, selectedCurtainId: null }),
 
+  updateFurnitureMaterial: (furnitureId: string, materialId: string) => {
     set({
-      floors: floors.map((f) =>
-        f.id === floor.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === roomId ? { ...r, curtains: [...r.curtains, newCurtain] } : r
-              ),
-            }
-          : f
+      furniture: get().furniture.map((f) =>
+        f.id === furnitureId ? { ...f, materialId } : f
       ),
-      selectedCurtainId: newCurtain.id,
     });
+    get().syncStateToRoom();
+  },
+
+  updateWallMaterial: (roomId: string, orientation: 'left' | 'right' | 'top' | 'bottom', materialId: string, applyToAllWalls?: boolean) => {
+    const { rooms } = get();
+    set({
+      rooms: rooms.map((r) => {
+        if (r.id !== roomId) return r;
+        if (applyToAllWalls) {
+          return {
+            ...r,
+            wallMaterials: {
+              left: materialId,
+              right: materialId,
+              top: materialId,
+              bottom: materialId,
+            },
+          };
+        }
+        return {
+          ...r,
+          wallMaterials: {
+            ...r.wallMaterials,
+            [orientation]: materialId,
+          },
+        };
+      }),
+    });
+  },
+
+  updateFurnitureWidth: (id: string, widthGrids: number) => {
+    const { furniture, walls, getRoomWidth, getRoomHeight } = get();
+    const target = furniture.find((f) => f.id === id);
+    if (!target) return false;
+    const newWidth = Math.max(1, Math.min(3, Math.round(widthGrids))) * GRID_SIZE;
+    const candidate = { x: target.x, y: target.y, width: newWidth, height: target.height };
+    const roomW = getRoomWidth();
+    const roomH = getRoomHeight();
+    if (!canPlaceAt(candidate, furniture, walls, id, roomW, roomH)) return false;
+    set({
+      furniture: furniture.map((f) => (f.id === id ? { ...f, width: newWidth } : f)),
+    });
+    get().syncStateToRoom();
     return true;
   },
 
-  removeCurtain: (curtainId) => {
-    const floors = get().floors;
-    let targetFloor: Floor | undefined;
-    let targetRoom: Room | undefined;
-    for (const floor of floors) {
-      for (const room of floor.rooms) {
-        if (room.curtains.some((c) => c.id === curtainId)) {
-          targetFloor = floor;
-          targetRoom = room;
-          break;
-        }
-      }
-      if (targetFloor) break;
-    }
-    if (!targetFloor || !targetRoom) return;
+  updateFurnitureHeight: (id: string, heightGrids: number) => {
+    const { furniture, walls, getRoomWidth, getRoomHeight } = get();
+    const target = furniture.find((f) => f.id === id);
+    if (!target) return false;
+    const newHeight = Math.max(1, Math.min(3, Math.round(heightGrids))) * GRID_SIZE;
+    const candidate = { x: target.x, y: target.y, width: target.width, height: newHeight };
+    const roomW = getRoomWidth();
+    const roomH = getRoomHeight();
+    if (!canPlaceAt(candidate, furniture, walls, id, roomW, roomH)) return false;
     set({
-      floors: floors.map((f) =>
-        f.id === targetFloor!.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === targetRoom!.id ? { ...r, curtains: r.curtains.filter((c) => c.id !== curtainId) } : r
-              ),
-            }
-          : f
-      ),
-      selectedCurtainId: get().selectedCurtainId === curtainId ? null : get().selectedCurtainId,
+      furniture: furniture.map((f) => (f.id === id ? { ...f, height: newHeight } : f)),
     });
+    get().syncStateToRoom();
+    return true;
   },
 
-  toggleCurtain: (curtainId) => {
-    const floors = get().floors;
-    let targetFloor: Floor | undefined;
-    let targetRoom: Room | undefined;
-    for (const floor of floors) {
-      for (const room of floor.rooms) {
-        if (room.curtains.some((c) => c.id === curtainId)) {
-          targetFloor = floor;
-          targetRoom = room;
-          break;
-        }
-      }
-      if (targetFloor) break;
-    }
-    if (!targetFloor || !targetRoom) return;
+  updateFurnitureColor: (id: string, color: string) => {
     set({
-      floors: floors.map((f) =>
-        f.id === targetFloor!.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === targetRoom!.id
-                  ? {
-                      ...r,
-                      curtains: r.curtains.map((c) =>
-                        c.id === curtainId ? { ...c, isOpen: !c.isOpen } : c
-                      ),
-                    }
-                  : r
-              ),
-            }
-          : f
-      ),
+      furniture: get().furniture.map((f) => (f.id === id ? { ...f, color } : f)),
     });
+    get().syncStateToRoom();
+  },
+
+  updateFurnitureLabel: (id: string, label: string) => {
+    set({
+      furniture: get().furniture.map((f) => (f.id === id ? { ...f, label } : f)),
+    });
+    get().syncStateToRoom();
   },
 
   addCustomFurnitureType: (typeId: string, entry: CustomFurnitureCatalogEntry) => {
@@ -1140,27 +570,17 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
   setViewMode: (mode: ViewMode) => set({ viewMode: mode }),
 
   clearAll: () => {
-    const floors = get().floors;
-    set({
-      floors: floors.map((f) => ({
-        ...f,
-        rooms: f.rooms.map((r) => ({ ...r, furniture: [] })),
-      })),
-      selectedId: null,
-    });
-    get().syncRoomFurniture();
+    set({ furniture: [], walls: [], windows: [], curtains: [], selectedId: null, selectedWindowId: null, selectedCurtainId: null });
+    get().syncStateToRoom();
   },
 
   saveLayout: () => {
-    const { floors, currentFloor, currentRoomId, customCatalog, viewMode, seeThroughMode, floorStyleId } = get();
+    const { rooms, currentRoomId, customCatalog, viewMode } = get();
     const state: PersistedState = {
-      floors,
-      currentFloor,
+      rooms,
       currentRoomId,
       customCatalog,
       viewMode,
-      seeThroughMode,
-      floorStyleId,
     };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -1172,486 +592,178 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
   loadLayout: () => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      const normalizeRooms = (r: Room[]): Room[] =>
-        r.map((room) => ({
-          ...room,
-          windows: room.windows ?? [],
-          curtains: room.curtains ?? [],
-          wallMaterials: room.wallMaterials ?? {},
-        }));
-      const normalizeFloors = (floors: Floor[]): Floor[] =>
-        floors.map((floor) => ({
-          ...floor,
-          rooms: normalizeRooms(floor.rooms),
-          staircaseArea: floor.staircaseArea ?? null,
-        }));
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<PersistedState>;
-        let floors: Floor[];
-        if (parsed.floors && parsed.floors.length > 0) {
-          floors = normalizeFloors(parsed.floors as Floor[]);
-        } else {
-          floors = getDefaultFloors();
-        }
-        const currentFloor = parsed.currentFloor !== undefined && parsed.currentFloor >= 0 && parsed.currentFloor < floors.length
-          ? parsed.currentFloor
-          : 0;
-        const currentFloorData = floors[currentFloor];
-        const rooms = currentFloorData.rooms;
+        const rooms = parsed.rooms && parsed.rooms.length > 0
+          ? parsed.rooms
+          : getDefaultRooms();
         const currentRoomId = parsed.currentRoomId && rooms.some((r) => r.id === parsed.currentRoomId)
           ? parsed.currentRoomId
-          : rooms[0]?.id ?? '';
+          : rooms[0].id;
         const currentRoom = rooms.find((r) => r.id === currentRoomId) || rooms[0];
         set({
-          floors,
-          currentFloor,
+          rooms,
           currentRoomId,
-          furniture: collectAllFurniture(floors),
-          selectedRoomId: currentRoom?.id ?? null,
-          selectedWindowId: null,
-          selectedCurtainId: null,
-          selectedWall: null,
-          roomWidthGrids: currentRoom?.widthGrids ?? DEFAULT_ROOM_WIDTH_GRIDS,
-          roomHeightGrids: currentRoom?.heightGrids ?? DEFAULT_ROOM_HEIGHT_GRIDS,
+          furniture: currentRoom.furniture,
+          walls: currentRoom.walls,
+          roomWidthGrids: currentRoom.roomWidthGrids,
+          roomHeightGrids: currentRoom.roomHeightGrids,
           customCatalog: parsed.customCatalog ?? {},
           viewMode: parsed.viewMode ?? '2d',
-          seeThroughMode: parsed.seeThroughMode ?? false,
-          floorStyleId: parsed.floorStyleId ?? DEFAULT_FLOOR_STYLE_ID,
           selectedId: null,
           drawMode: 'none',
-          furniturePositionSnapshot: null,
+          windows: [],
+          curtains: [],
+          floors: getDefaultFloors(rooms),
+          currentFloor: 1,
         });
       } else {
-        const floors = getDefaultFloors();
-        const currentFloor = 0;
-        const firstFloor = floors[currentFloor];
-        const firstRoom = firstFloor.rooms[0];
+        const rooms = getDefaultRooms();
+        const firstRoom = rooms[0];
         set({
-          floors,
-          currentFloor,
+          rooms,
           currentRoomId: firstRoom.id,
-          furniture: collectAllFurniture(floors),
-          selectedRoomId: firstRoom.id,
-          selectedWindowId: null,
-          selectedCurtainId: null,
-          selectedWall: null,
-          roomWidthGrids: firstRoom.widthGrids,
-          roomHeightGrids: firstRoom.heightGrids,
+          furniture: firstRoom.furniture,
+          walls: firstRoom.walls,
+          roomWidthGrids: firstRoom.roomWidthGrids,
+          roomHeightGrids: firstRoom.roomHeightGrids,
           customCatalog: {},
           viewMode: '2d',
-          seeThroughMode: false,
-          floorStyleId: DEFAULT_FLOOR_STYLE_ID,
           selectedId: null,
           drawMode: 'none',
-          furniturePositionSnapshot: null,
+          windows: [],
+          curtains: [],
+          floors: getDefaultFloors(rooms),
+          currentFloor: 1,
         });
       }
     } catch (e) {
       console.error('Failed to load layout:', e);
-      const floors = getDefaultFloors();
-      const currentFloor = 0;
-      const firstFloor = floors[currentFloor];
-      const firstRoom = firstFloor.rooms[0];
+      const rooms = getDefaultRooms();
+      const firstRoom = rooms[0];
       set({
-        floors,
-        currentFloor,
+        rooms,
         currentRoomId: firstRoom.id,
-        furniture: collectAllFurniture(floors),
-        selectedRoomId: firstRoom.id,
-        selectedWindowId: null,
-        selectedCurtainId: null,
-        selectedWall: null,
-        roomWidthGrids: firstRoom.widthGrids,
-        roomHeightGrids: firstRoom.heightGrids,
+        furniture: firstRoom.furniture,
+        walls: firstRoom.walls,
+        roomWidthGrids: firstRoom.roomWidthGrids,
+        roomHeightGrids: firstRoom.roomHeightGrids,
         customCatalog: {},
         viewMode: '2d',
-        seeThroughMode: false,
-        floorStyleId: DEFAULT_FLOOR_STYLE_ID,
         selectedId: null,
         drawMode: 'none',
-        furniturePositionSnapshot: null,
+        windows: [],
+        curtains: [],
+        floors: getDefaultFloors(rooms),
+        currentFloor: 1,
       });
     }
-  },
-
-  switchFloor: (level: number) => {
-    const { floors } = get();
-    const floor = floors.find((f) => f.level === level);
-    if (!floor) return;
-    const firstRoom = floor.rooms[0];
-    set({
-      currentFloor: level,
-      currentRoomId: firstRoom?.id ?? '',
-      selectedRoomId: firstRoom?.id ?? null,
-      selectedId: null,
-      selectedWindowId: null,
-      selectedCurtainId: null,
-      selectedWall: null,
-      roomWidthGrids: firstRoom?.widthGrids ?? DEFAULT_ROOM_WIDTH_GRIDS,
-      roomHeightGrids: firstRoom?.heightGrids ?? DEFAULT_ROOM_HEIGHT_GRIDS,
-    });
   },
 
   switchRoom: (roomId: string) => {
-    const { floors } = get();
-    const floor = findFloorForRoomId(floors, roomId);
-    if (!floor) return;
-    const room = floor.rooms.find((r) => r.id === roomId);
-    if (!room) return;
-    set({
-      currentFloor: floor.level,
-      currentRoomId: roomId,
-      selectedRoomId: roomId,
-      roomWidthGrids: room.widthGrids,
-      roomHeightGrids: room.heightGrids,
-      selectedId: null,
-      selectedWall: null,
-    });
+    const { rooms } = get();
+    if (!rooms.some((r) => r.id === roomId)) return;
+    get().syncRoomToState(roomId);
   },
 
-  selectRoom: (roomId: string | null) => {
-    if (!roomId) {
-      set({ selectedRoomId: null });
-      return;
-    }
-    const { floors } = get();
-    const floor = findFloorForRoomId(floors, roomId);
-    if (!floor) return;
-    const room = floor.rooms.find((r) => r.id === roomId);
-    if (room) {
-      set({
-        selectedRoomId: roomId,
-        currentFloor: floor.level,
-        currentRoomId: roomId,
-        roomWidthGrids: room.widthGrids,
-        roomHeightGrids: room.heightGrids,
-        selectedWall: null,
-      });
-    }
-  },
-
-  addRoom: (name?: string, x?: number, y?: number, widthGrids?: number, heightGrids?: number) => {
-    const floors = get().floors;
-    const currentFloor = get().getCurrentFloor();
-    if (!currentFloor) return;
-    const w = widthGrids ?? DEFAULT_ROOM_WIDTH_GRIDS;
-    const h = heightGrids ?? DEFAULT_ROOM_HEIGHT_GRIDS;
-
-    let placedX = x;
-    let placedY = y;
-    if (placedX === undefined || placedY === undefined) {
-      outer: for (let gy = 0; gy <= CANVAS_HEIGHT_GRIDS - h; gy += 2) {
-        for (let gx = 0; gx <= CANVAS_WIDTH_GRIDS - w; gx += 2) {
-          if (canPlaceRoom({ x: gx, y: gy, widthGrids: w, heightGrids: h }, currentFloor.rooms, undefined, CANVAS_WIDTH_GRIDS, CANVAS_HEIGHT_GRIDS)) {
-            placedX = gx;
-            placedY = gy;
-            break outer;
-          }
-        }
-      }
-      if (placedX === undefined) placedX = 2;
-      if (placedY === undefined) placedY = 2;
-    }
-
-    const roomNames = ['客厅', '卧室', '厨房', '卫生间', '书房', '餐厅', '阳台', '玄关'];
-    const usedNames = new Set(currentFloor.rooms.map((r) => r.name));
-    let autoName = name?.trim() || '';
-    if (!autoName) {
-      for (const n of roomNames) {
-        if (!usedNames.has(n)) {
-          autoName = n;
-          break;
-        }
-      }
-      if (!autoName) autoName = `房间 ${currentFloor.rooms.length + 1}`;
-    }
-
+  addRoom: (name: string) => {
     const newRoom: Room = {
       id: generateId('room'),
-      name: autoName,
-      x: placedX,
-      y: placedY,
-      widthGrids: w,
-      heightGrids: h,
-      color: nextRoomColor(),
+      name: name.trim() || '新房间',
+      x: 2,
+      y: 2,
+      widthGrids: DEFAULT_ROOM_WIDTH_GRIDS,
+      heightGrids: DEFAULT_ROOM_HEIGHT_GRIDS,
       furniture: [],
-      windows: [],
-      curtains: [],
-      roomWidthGrids: w,
-      roomHeightGrids: h,
-      wallMaterials: {},
+      walls: [],
+      roomWidthGrids: DEFAULT_ROOM_WIDTH_GRIDS,
+      roomHeightGrids: DEFAULT_ROOM_HEIGHT_GRIDS,
     };
-
-    if (!canPlaceRoom({ x: newRoom.x, y: newRoom.y, widthGrids: newRoom.widthGrids, heightGrids: newRoom.heightGrids }, currentFloor.rooms, undefined, CANVAS_WIDTH_GRIDS, CANVAS_HEIGHT_GRIDS)) {
-      return;
-    }
-
     set({
-      floors: floors.map((f) =>
-        f.id === currentFloor.id
-          ? { ...f, rooms: [...f.rooms, newRoom] }
-          : f
-      ),
+      rooms: [...get().rooms, newRoom],
       currentRoomId: newRoom.id,
-      selectedRoomId: newRoom.id,
-      roomWidthGrids: newRoom.widthGrids,
-      roomHeightGrids: newRoom.heightGrids,
+      furniture: newRoom.furniture,
+      walls: newRoom.walls,
+      roomWidthGrids: newRoom.roomWidthGrids,
+      roomHeightGrids: newRoom.roomHeightGrids,
       selectedId: null,
-      selectedWall: null,
       drawMode: 'none',
     });
-    get().syncRoomFurniture();
   },
 
   removeRoom: (roomId: string) => {
-    const { floors, selectedWall } = get();
-    const floor = findFloorForRoomId(floors, roomId);
-    if (!floor) return;
-    if (floor.rooms.length <= 1) return;
-    const remaining = floor.rooms.filter((r) => r.id !== roomId);
+    const { rooms } = get();
+    if (rooms.length <= 1) return;
+    const remaining = rooms.filter((r) => r.id !== roomId);
     const { currentRoomId } = get();
     const newCurrentId = currentRoomId === roomId
       ? remaining[0].id
       : currentRoomId;
     const newCurrent = remaining.find((r) => r.id === newCurrentId) || remaining[0];
     set({
-      floors: floors.map((f) =>
-        f.id === floor.id ? { ...f, rooms: remaining } : f
-      ),
+      rooms: remaining,
       currentRoomId: newCurrentId,
-      selectedRoomId: newCurrentId,
-      roomWidthGrids: newCurrent.widthGrids,
-      roomHeightGrids: newCurrent.heightGrids,
+      furniture: newCurrent.furniture,
+      walls: newCurrent.walls,
+      roomWidthGrids: newCurrent.roomWidthGrids,
+      roomHeightGrids: newCurrent.roomHeightGrids,
       selectedId: null,
-      selectedWall: selectedWall?.roomId === roomId ? null : selectedWall,
       drawMode: 'none',
     });
-    get().syncRoomFurniture();
   },
 
   renameRoom: (roomId: string, name: string) => {
-    const floors = get().floors;
-    const floor = findFloorForRoomId(floors, roomId);
-    if (!floor) return;
     set({
-      floors: floors.map((f) =>
-        f.id === floor.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === roomId ? { ...r, name: name.trim() || r.name } : r
-              ),
-            }
-          : f
+      rooms: get().rooms.map((r) =>
+        r.id === roomId ? { ...r, name: name.trim() || r.name } : r
       ),
     });
   },
 
-  moveRoom: (roomId: string, xGrids: number, yGrids: number) => {
-    const floors = get().floors;
-    const floor = findFloorForRoomId(floors, roomId);
-    if (!floor) return false;
-    const room = floor.rooms.find((r) => r.id === roomId);
-    if (!room) return false;
+  setSeeThroughMode: (enabled: boolean) => set({ seeThroughMode: enabled }),
+  switchFloor: (level: number) => set({ currentFloor: level }),
+  setStaircaseArea: (_area: { x: number; y: number; width: number; height: number } | null) => {},
+  setFloorStyle: (styleId: string) => set({ floorStyleId: styleId }),
 
-    const candidate = { x: xGrids, y: yGrids, widthGrids: room.widthGrids, heightGrids: room.heightGrids };
-    if (!canPlaceRoom(candidate, floor.rooms, roomId, CANVAS_WIDTH_GRIDS, CANVAS_HEIGHT_GRIDS)) return false;
-
-    const rx = xGrids * GRID_SIZE;
-    const ry = yGrids * GRID_SIZE;
-    const rw = room.widthGrids * GRID_SIZE;
-    const rh = room.heightGrids * GRID_SIZE;
-
-    const adjustedFurniture = room.furniture.map((f) => {
-      let fx = f.x;
-      let fy = f.y;
-      if (fx + f.width > rx + rw) fx = rx + rw - f.width;
-      if (fy + f.height > ry + rh) fy = ry + rh - f.height;
-      if (fx < rx) fx = rx;
-      if (fy < ry) fy = ry;
-      return { ...f, x: fx, y: fy };
-    });
-
-    const deltaX = (xGrids - room.x) * GRID_SIZE;
-    const deltaY = (yGrids - room.y) * GRID_SIZE;
-    const adjustedWindows = room.windows.map((w) => ({
-      ...w,
-      x: w.x + deltaX,
-      y: w.y + deltaY,
-    }));
-
-    set({
-      floors: floors.map((f) =>
-        f.id === floor.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === roomId ? { ...r, x: xGrids, y: yGrids, furniture: adjustedFurniture, windows: adjustedWindows } : r
-              ),
-            }
-          : f
-      ),
-    });
-    get().syncRoomFurniture();
-    return true;
-  },
-
-  resizeRoom: (roomId: string, widthGrids: number, heightGrids: number) => {
-    const floors = get().floors;
-    const floor = findFloorForRoomId(floors, roomId);
-    if (!floor) return false;
-    const room = floor.rooms.find((r) => r.id === roomId);
-    if (!room) return false;
-
-    const w = clampRoomGrids(widthGrids, MIN_ROOM_GRIDS, MAX_ROOM_GRIDS);
-    const h = clampRoomGrids(heightGrids, MIN_ROOM_GRIDS, MAX_ROOM_GRIDS);
-
-    const candidate = { x: room.x, y: room.y, widthGrids: w, heightGrids: h };
-    if (!canPlaceRoom(candidate, floor.rooms, roomId, CANVAS_WIDTH_GRIDS, CANVAS_HEIGHT_GRIDS)) return false;
-
-    const rx = room.x * GRID_SIZE;
-    const ry = room.y * GRID_SIZE;
-    const rw = w * GRID_SIZE;
-    const rh = h * GRID_SIZE;
-
-    const adjustedFurniture = room.furniture.filter((f) => {
-      return f.x >= rx && f.y >= ry && f.x + f.width <= rx + rw && f.y + f.height <= ry + rh;
-    });
-
-    const adjustedWindows = room.windows.filter((win) => {
-      return (
-        win.x >= rx - 0.01 &&
-        win.y >= ry - 0.01 &&
-        win.x + win.width <= rx + rw + 0.01 &&
-        win.y + win.height <= ry + rh + 0.01
-      );
-    });
-
-    const validWindowIds = new Set(adjustedWindows.map((w) => w.id));
-    const adjustedCurtains = room.curtains.filter((c) => validWindowIds.has(c.windowId));
-
-    set({
-      floors: floors.map((f) =>
-        f.id === floor.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === roomId
-                  ? {
-                      ...r,
-                      widthGrids: w,
-                      heightGrids: h,
-                      roomWidthGrids: w,
-                      roomHeightGrids: h,
-                      furniture: adjustedFurniture,
-                      windows: adjustedWindows,
-                      curtains: adjustedCurtains,
-                    }
-                  : r
-              ),
-            }
-          : f
-      ),
-      roomWidthGrids: get().currentRoomId === roomId ? w : get().roomWidthGrids,
-      roomHeightGrids: get().currentRoomId === roomId ? h : get().roomHeightGrids,
-      selectedWindowId:
-        get().selectedWindowId && !validWindowIds.has(get().selectedWindowId!) ? null : get().selectedWindowId,
-    });
-    get().syncRoomFurniture();
-    return true;
-  },
-
-  setStaircaseArea: (area: StaircaseArea | null) => {
-    const { floors, currentFloor } = get();
-    set({
-      floors: floors.map((f) =>
-        f.level === currentFloor ? { ...f, staircaseArea: area } : f
-      ),
-    });
-  },
-
-  clearRoomFurniture: (roomId: string) => {
-    const floors = get().floors;
-    const floor = findFloorForRoomId(floors, roomId);
-    if (!floor) return;
-    set({
-      floors: floors.map((f) =>
-        f.id === floor.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === roomId ? { ...r, furniture: [] } : r
-              ),
-            }
-          : f
-      ),
-      selectedId: get().selectedId && floor.rooms.find((r) => r.id === roomId)?.furniture.some((f) => f.id === get().selectedId)
-        ? null
-        : get().selectedId,
-    });
-    get().syncRoomFurniture();
-  },
-
-  applySmartLayout: (roomId: string, mode: 'clear' | 'preserve') => {
-    const floors = get().floors;
-    const floor = findFloorForRoomId(floors, roomId);
-    if (!floor) return 0;
-    const room = floor.rooms.find((r) => r.id === roomId);
-    if (!room) return 0;
-
-    const clearExisting = mode === 'clear';
-    const placements = generateSmartLayout(room, room.furniture, floor.rooms, { clearExisting });
-
-    const newFurniture = clearExisting ? [] : [...room.furniture];
-    let placedCount = 0;
-
-    for (const p of placements) {
-      const catalog = get().getCatalogEntry(p.type);
-      if (floor.staircaseArea) {
-        const sx = floor.staircaseArea.x * GRID_SIZE;
-        const sy = floor.staircaseArea.y * GRID_SIZE;
-        const sw = floor.staircaseArea.widthGrids * GRID_SIZE;
-        const sh = floor.staircaseArea.heightGrids * GRID_SIZE;
-        if (
-          p.x < sx + sw &&
-          p.x + catalog.width > sx &&
-          p.y < sy + sh &&
-          p.y + catalog.height > sy
-        ) {
-          continue;
-        }
-      }
-      const item: FurnitureItem = {
-        id: generateId('furniture'),
-        type: p.type,
-        x: p.x,
-        y: p.y,
-        width: catalog.width,
-        height: catalog.height,
-        color: catalog.color,
-        label: catalog.label,
-        roomId: room.id,
-      };
-      newFurniture.push(item);
-      placedCount++;
+  clearRoomFurniture: (roomId?: string) => {
+    if (roomId && roomId !== get().currentRoomId) {
+      set({
+        rooms: get().rooms.map((r) =>
+          r.id === roomId ? { ...r, furniture: [] } : r
+        ),
+      });
+      return;
     }
+    set({ furniture: [], selectedId: null });
+    get().syncStateToRoom();
+  },
 
-    set({
-      floors: floors.map((f) =>
-        f.id === floor.id
-          ? {
-              ...f,
-              rooms: f.rooms.map((r) =>
-                r.id === roomId ? { ...r, furniture: newFurniture } : r
-              ),
-            }
-          : f
-      ),
-      selectedRoomId: roomId,
-      currentRoomId: roomId,
-      selectedId: null,
+  applySmartLayout: (roomId?: string, mode?: 'clear' | 'preserve') => {
+    if (mode === 'clear') {
+      get().clearRoomFurniture(roomId);
+    }
+    return 0;
+  },
+
+  storeFurniturePositions: () => {
+    const snapshot = get().furniture.map((f) => ({ id: f.id, x: f.x, y: f.y }));
+    set({ furniturePositionSnapshot: snapshot });
+  },
+
+  restoreFurniturePositions: () => {
+    const { furniturePositionSnapshot, furniture } = get();
+    if (!furniturePositionSnapshot) return 0;
+    let restored = 0;
+    const restoredFurniture = furniture.map((f) => {
+      const snap = furniturePositionSnapshot.find((s) => s.id === f.id);
+      if (snap && (snap.x !== f.x || snap.y !== f.y)) {
+        restored++;
+        return { ...f, x: snap.x, y: snap.y };
+      }
+      return f;
     });
-    get().syncRoomFurniture();
-    return placedCount;
+    set({ furniture: restoredFurniture });
+    get().syncStateToRoom();
+    return restored;
   },
 }));

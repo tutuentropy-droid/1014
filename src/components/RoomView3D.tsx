@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useDesignerStore } from '@/store/useDesignerStore';
-import type { FurnitureItem, Room, WindowItem, CurtainItem, Floor, StaircaseArea, WallOrientation, MaterialPreset, FloorStylePreset } from '@/types/furniture';
+import type { FurnitureItem, Room, WindowItem, CurtainItem, Floor, StaircaseArea, WallOrientation, MaterialPreset, FloorStylePreset, FurnitureStyleVariant } from '@/types/furniture';
 import { GRID_SIZE, CANVAS_WIDTH_GRIDS, CANVAS_HEIGHT_GRIDS, FLOOR_HEIGHT, SLAB_THICKNESS } from '@/data/furnitureData';
 import { generateTextureCanvas, getMaterialById, DEFAULT_WALL_MATERIAL_ID, getFloorStyleById, generateFloorTextureCanvas } from '@/data/materialData';
 
@@ -59,6 +59,108 @@ const getOrCreateTexture = (preset: MaterialPreset): THREE.Texture | null => {
 
 const floorTextureCache = new Map<string, THREE.Texture>();
 
+const variantTextureCache = new Map<string, THREE.Texture>();
+
+const generateVariantTexture = (variant: FurnitureStyleVariant): THREE.Texture | null => {
+  const { texture: textureType, color3D } = variant;
+  if (!textureType) {
+    return null;
+  }
+  const cacheKey = `${textureType}_${color3D}_256`;
+  if (variantTextureCache.has(cacheKey)) {
+    return variantTextureCache.get(cacheKey)!;
+  }
+  try {
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    const baseColor = new THREE.Color(color3D);
+    const r = Math.floor(baseColor.r * 255);
+    const g = Math.floor(baseColor.g * 255);
+    const b = Math.floor(baseColor.b * 255);
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect(0, 0, size, size);
+
+    if (textureType === 'woodGrain') {
+      for (let i = 0; i < 60; i++) {
+        ctx.strokeStyle = `rgba(${Math.max(0, r - 40)},${Math.max(0, g - 30)},${Math.max(0, b - 20)},0.35)`;
+        ctx.lineWidth = 1 + Math.random() * 2;
+        const y = Math.random() * size;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.bezierCurveTo(size * 0.3, y + (Math.random() - 0.5) * 20, size * 0.7, y + (Math.random() - 0.5) * 20, size, y + (Math.random() - 0.5) * 10);
+        ctx.stroke();
+      }
+    } else if (textureType === 'fabricWeave') {
+      for (let x = 0; x < size; x += 4) {
+        for (let y = 0; y < size; y += 4) {
+          const dx = (x / 4 + y / 4) % 2 === 0;
+          const shade = dx ? -15 : 15;
+          ctx.fillStyle = `rgb(${Math.min(255, r + shade)},${Math.min(255, g + shade)},${Math.min(255, b + shade)})`;
+          ctx.fillRect(x, y, 4, 4);
+        }
+      }
+    } else if (textureType === 'metalBrushed') {
+      for (let i = 0; i < 80; i++) {
+        const shade = 30 + Math.floor(Math.random() * 60);
+        ctx.strokeStyle = `rgba(${Math.min(255, r + shade)},${Math.min(255, g + shade)},${Math.min(255, b + shade)},0.4)`;
+        ctx.lineWidth = 0.5;
+        const y = Math.random() * size;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(size, y + (Math.random() - 0.5) * 3);
+        ctx.stroke();
+      }
+    } else if (textureType === 'leather') {
+      for (let i = 0; i < 400; i++) {
+        const shade = -25 + Math.floor(Math.random() * 50);
+        const lr = Math.max(0, Math.min(255, r + shade));
+        const lg = Math.max(0, Math.min(255, g + shade));
+        const lb = Math.max(0, Math.min(255, b + shade));
+        ctx.fillStyle = `rgba(${lr},${lg},${lb},0.25)`;
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const rad = 1 + Math.random() * 2.5;
+        ctx.beginPath();
+        ctx.arc(x, y, rad, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (textureType === 'marble') {
+      for (let i = 0; i < 15; i++) {
+        ctx.strokeStyle = `rgba(${Math.min(255, r + 50)},${Math.min(255, g + 50)},${Math.min(255, b + 50)},0.4)`;
+        ctx.lineWidth = 0.5 + Math.random() * 1.5;
+        ctx.beginPath();
+        const startX = Math.random() * size;
+        const startY = Math.random() * size;
+        ctx.moveTo(startX, startY);
+        ctx.bezierCurveTo(
+          startX + (Math.random() - 0.5) * size * 0.8,
+          startY + (Math.random() - 0.5) * size * 0.4,
+          startX + (Math.random() - 0.5) * size * 0.8,
+          startY + (Math.random() - 0.5) * size * 0.4,
+          startX + (Math.random() - 0.5) * size,
+          startY + (Math.random() - 0.5) * size
+        );
+        ctx.stroke();
+      }
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(2, 2);
+    texture.anisotropy = 4;
+    texture.needsUpdate = true;
+    variantTextureCache.set(cacheKey, texture);
+    return texture;
+  } catch {
+    return null;
+  }
+};
+
 const getOrCreateFloorTexture = (
   preset: FloorStylePreset,
   roomWidthMeters: number,
@@ -98,30 +200,52 @@ const createThreeMaterial = (preset: MaterialPreset): THREE.MeshStandardMaterial
   });
 };
 
-const createBedMesh = (w: number, d: number, h: number, color: number) => {
+const createBedMesh = (w: number, d: number, h: number, color: number, variant?: FurnitureStyleVariant) => {
   const bedGroup = new THREE.Group();
+  const roughness = variant?.roughness ?? 0.6;
+  const metalness = variant?.metalness ?? 0.05;
+  const accentColor = variant?.accentColor3D ?? 0x8b7355;
+  const pillowColor = variant?.accentColor3D ? hexToThreeColorLighten('#' + variant.accentColor3D.toString(16).padStart(6, '0'), 0.4) : 0xf0e6d6;
+  const mainTexture = variant ? generateVariantTexture(variant) : null;
+
   const mattressGeo = new THREE.BoxGeometry(w * 0.95, h * 0.4, d * 0.95);
-  const mattressMat = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.05 });
+  const mattressMat = new THREE.MeshStandardMaterial({
+    color,
+    roughness,
+    metalness,
+    map: mainTexture ?? undefined,
+  });
   const mattress = new THREE.Mesh(mattressGeo, mattressMat);
   mattress.position.y = h * 0.4;
   mattress.castShadow = true;
   mattress.receiveShadow = true;
   bedGroup.add(mattress);
+
   const baseGeo = new THREE.BoxGeometry(w * 0.95, h * 0.25, d * 0.95);
-  const baseMat = new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.8, metalness: 0.05 });
+  const baseMat = new THREE.MeshStandardMaterial({
+    color: accentColor,
+    roughness: variant?.roughness ?? 0.8,
+    metalness: variant?.metalness ?? 0.05,
+  });
   const base = new THREE.Mesh(baseGeo, baseMat);
   base.position.y = h * 0.125;
   base.castShadow = true;
   base.receiveShadow = true;
   bedGroup.add(base);
+
   const headboardGeo = new THREE.BoxGeometry(w * 0.95, h * 0.7, d * 0.1);
   const headboard = new THREE.Mesh(headboardGeo, baseMat);
   headboard.position.set(0, h * 0.45, -d * 0.42);
   headboard.castShadow = true;
   headboard.receiveShadow = true;
   bedGroup.add(headboard);
+
   const pillowGeo = new THREE.BoxGeometry(w * 0.25, h * 0.15, d * 0.2);
-  const pillowMat = new THREE.MeshStandardMaterial({ color: 0xf0e6d6, roughness: 0.5, metalness: 0.02 });
+  const pillowMat = new THREE.MeshStandardMaterial({
+    color: pillowColor,
+    roughness: 0.5,
+    metalness: 0.02,
+  });
   const pillow1 = new THREE.Mesh(pillowGeo, pillowMat);
   pillow1.position.set(-w * 0.2, h * 0.57, -d * 0.25);
   pillow1.castShadow = true;
@@ -130,49 +254,89 @@ const createBedMesh = (w: number, d: number, h: number, color: number) => {
   pillow2.castShadow = true;
   bedGroup.add(pillow1);
   bedGroup.add(pillow2);
+
+  if (variant?.scale3D) {
+    bedGroup.scale.setScalar(variant.scale3D);
+  }
   return bedGroup;
 };
 
-const createSofaMesh = (w: number, d: number, h: number, color: number) => {
+const createSofaMesh = (w: number, d: number, h: number, color: number, variant?: FurnitureStyleVariant) => {
   const sofaGroup = new THREE.Group();
+  const roughness = variant?.roughness ?? 0.65;
+  const metalness = variant?.metalness ?? 0.05;
+  const mainTexture = variant ? generateVariantTexture(variant) : null;
+  const accentColor = variant?.accentColor3D ?? color;
+
   const seatGeo = new THREE.BoxGeometry(w * 0.9, h * 0.35, d * 0.75);
-  const seatMat = new THREE.MeshStandardMaterial({ color, roughness: 0.65, metalness: 0.05 });
+  const seatMat = new THREE.MeshStandardMaterial({
+    color,
+    roughness,
+    metalness,
+    map: mainTexture ?? undefined,
+  });
   const seat = new THREE.Mesh(seatGeo, seatMat);
   seat.position.y = h * 0.3;
   seat.castShadow = true;
   seat.receiveShadow = true;
   sofaGroup.add(seat);
+
   const backGeo = new THREE.BoxGeometry(w * 0.9, h * 0.5, d * 0.15);
   const back = new THREE.Mesh(backGeo, seatMat);
   back.position.set(0, h * 0.55, -d * 0.27);
   back.castShadow = true;
   back.receiveShadow = true;
   sofaGroup.add(back);
+
   const armGeo = new THREE.BoxGeometry(w * 0.08, h * 0.45, d * 0.75);
-  const arm1 = new THREE.Mesh(armGeo, seatMat);
+  const armMat = new THREE.MeshStandardMaterial({
+    color: accentColor,
+    roughness,
+    metalness,
+  });
+  const arm1 = new THREE.Mesh(armGeo, armMat);
   arm1.position.set(-w * 0.41, h * 0.35, 0);
   arm1.castShadow = true;
   arm1.receiveShadow = true;
   sofaGroup.add(arm1);
-  const arm2 = new THREE.Mesh(armGeo, seatMat);
+  const arm2 = new THREE.Mesh(armGeo, armMat);
   arm2.position.set(w * 0.41, h * 0.35, 0);
   arm2.castShadow = true;
   arm2.receiveShadow = true;
   sofaGroup.add(arm2);
+
+  if (variant?.scale3D) {
+    sofaGroup.scale.setScalar(variant.scale3D);
+  }
   return sofaGroup;
 };
 
-const createTableMesh = (w: number, d: number, h: number, color: number) => {
+const createTableMesh = (w: number, d: number, h: number, color: number, variant?: FurnitureStyleVariant) => {
   const tableGroup = new THREE.Group();
+  const roughness = variant?.roughness ?? 0.55;
+  const metalness = variant?.metalness ?? 0.05;
+  const legColor = variant?.accentColor3D ?? 0x5c4033;
+  const mainTexture = variant ? generateVariantTexture(variant) : null;
+
   const tabletopGeo = new THREE.BoxGeometry(w * 0.95, h * 0.1, d * 0.95);
-  const tabletopMat = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05 });
+  const tabletopMat = new THREE.MeshStandardMaterial({
+    color,
+    roughness,
+    metalness,
+    map: mainTexture ?? undefined,
+  });
   const tabletop = new THREE.Mesh(tabletopGeo, tabletopMat);
   tabletop.position.y = h * 0.75;
   tabletop.castShadow = true;
   tabletop.receiveShadow = true;
   tableGroup.add(tabletop);
+
   const legGeo = new THREE.BoxGeometry(w * 0.08, h * 0.7, d * 0.08);
-  const legMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.75, metalness: 0.05 });
+  const legMat = new THREE.MeshStandardMaterial({
+    color: legColor,
+    roughness: variant?.roughness ?? 0.75,
+    metalness: variant?.metalness ?? 0.05,
+  });
   const positions = [
     [-w * 0.35, -d * 0.35],
     [w * 0.35, -d * 0.35],
@@ -186,26 +350,46 @@ const createTableMesh = (w: number, d: number, h: number, color: number) => {
     leg.receiveShadow = true;
     tableGroup.add(leg);
   });
+
+  if (variant?.scale3D) {
+    tableGroup.scale.setScalar(variant.scale3D);
+  }
   return tableGroup;
 };
 
-const createChairMesh = (w: number, d: number, h: number, color: number) => {
+const createChairMesh = (w: number, d: number, h: number, color: number, variant?: FurnitureStyleVariant) => {
   const chairGroup = new THREE.Group();
+  const roughness = variant?.roughness ?? 0.6;
+  const metalness = variant?.metalness ?? 0.05;
+  const legColor = variant?.accentColor3D ?? 0x5c4033;
+  const mainTexture = variant ? generateVariantTexture(variant) : null;
+
   const seatGeo = new THREE.BoxGeometry(w * 0.8, h * 0.1, d * 0.8);
-  const seatMat = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.05 });
+  const seatMat = new THREE.MeshStandardMaterial({
+    color,
+    roughness,
+    metalness,
+    map: mainTexture ?? undefined,
+  });
   const seat = new THREE.Mesh(seatGeo, seatMat);
   seat.position.y = h * 0.5;
   seat.castShadow = true;
   seat.receiveShadow = true;
   chairGroup.add(seat);
+
   const backGeo = new THREE.BoxGeometry(w * 0.8, h * 0.5, d * 0.08);
   const back = new THREE.Mesh(backGeo, seatMat);
   back.position.set(0, h * 0.8, -d * 0.35);
   back.castShadow = true;
   back.receiveShadow = true;
   chairGroup.add(back);
+
   const legGeo = new THREE.BoxGeometry(w * 0.08, h * 0.5, d * 0.08);
-  const legMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.75, metalness: 0.05 });
+  const legMat = new THREE.MeshStandardMaterial({
+    color: legColor,
+    roughness: variant?.roughness ?? 0.75,
+    metalness: variant?.metalness ?? 0.05,
+  });
   const positions = [
     [-w * 0.3, -d * 0.3],
     [w * 0.3, -d * 0.3],
@@ -219,79 +403,152 @@ const createChairMesh = (w: number, d: number, h: number, color: number) => {
     leg.receiveShadow = true;
     chairGroup.add(leg);
   });
+
+  if (variant?.scale3D) {
+    chairGroup.scale.setScalar(variant.scale3D);
+  }
   return chairGroup;
 };
 
-const createPlantMesh = (w: number, d: number, h: number, color: number) => {
+const createPlantMesh = (w: number, d: number, h: number, color: number, variant?: FurnitureStyleVariant) => {
   const plantGroup = new THREE.Group();
+  const potColor = variant?.accentColor3D ?? 0xc4a574;
+  const leafRoughness = variant?.roughness ?? 0.5;
+  const leafMetalness = variant?.metalness ?? 0.02;
+
   const potGeo = new THREE.CylinderGeometry(w * 0.35, w * 0.3, h * 0.25, 16);
-  const potMat = new THREE.MeshStandardMaterial({ color: 0xc4a574, roughness: 0.7, metalness: 0.05 });
+  const potMat = new THREE.MeshStandardMaterial({
+    color: potColor,
+    roughness: variant?.roughness ?? 0.7,
+    metalness: variant?.metalness ?? 0.05,
+  });
   const pot = new THREE.Mesh(potGeo, potMat);
   pot.position.y = h * 0.125;
   pot.castShadow = true;
   pot.receiveShadow = true;
   plantGroup.add(pot);
-  const leafMat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.02 });
+
+  const leafMat = new THREE.MeshStandardMaterial({
+    color,
+    roughness: leafRoughness,
+    metalness: leafMetalness,
+  });
   const topLeafGeo = new THREE.SphereGeometry(w * 0.38, 16, 16);
   const topLeaf = new THREE.Mesh(topLeafGeo, leafMat);
   topLeaf.position.set(0, h * 0.65, 0);
   topLeaf.castShadow = true;
   plantGroup.add(topLeaf);
+
+  if (variant?.scale3D) {
+    plantGroup.scale.setScalar(variant.scale3D);
+  }
   return plantGroup;
 };
 
-const createTvCabinetMesh = (w: number, d: number, h: number, color: number) => {
+const createTvCabinetMesh = (w: number, d: number, h: number, color: number, variant?: FurnitureStyleVariant) => {
   const g = new THREE.Group();
+  const roughness = variant?.roughness ?? 0.6;
+  const metalness = variant?.metalness ?? 0.08;
+  const accentColor = variant?.accentColor3D ?? 0x1a1a1a;
+  const mainTexture = variant ? generateVariantTexture(variant) : null;
+
   const bodyGeo = new THREE.BoxGeometry(w * 0.95, h * 0.8, d * 0.9);
-  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.08 });
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color,
+    roughness,
+    metalness,
+    map: mainTexture ?? undefined,
+  });
   const body = new THREE.Mesh(bodyGeo, bodyMat);
   body.position.y = h * 0.4;
   body.castShadow = true;
   body.receiveShadow = true;
   g.add(body);
+
   const tvGeo = new THREE.BoxGeometry(w * 0.85, h * 1.2, d * 0.05);
-  const tvMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.3, metalness: 0.5 });
+  const tvMat = new THREE.MeshStandardMaterial({
+    color: accentColor,
+    roughness: 0.3,
+    metalness: 0.5,
+  });
   const tv = new THREE.Mesh(tvGeo, tvMat);
   tv.position.set(0, h * 1.3, -d * 0.35);
   tv.castShadow = true;
   g.add(tv);
+
+  if (variant?.scale3D) {
+    g.scale.setScalar(variant.scale3D);
+  }
   return g;
 };
 
-const createWardrobeMesh = (w: number, d: number, h: number, color: number) => {
+const createWardrobeMesh = (w: number, d: number, h: number, color: number, variant?: FurnitureStyleVariant) => {
   const g = new THREE.Group();
+  const roughness = variant?.roughness ?? 0.7;
+  const metalness = variant?.metalness ?? 0.03;
+  const handleColor = variant?.accentColor3D ?? 0xc9a96a;
+  const mainTexture = variant ? generateVariantTexture(variant) : null;
+
   const bodyGeo = new THREE.BoxGeometry(w * 0.95, h * 0.95, d * 0.9);
-  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.03 });
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color,
+    roughness,
+    metalness,
+    map: mainTexture ?? undefined,
+  });
   const body = new THREE.Mesh(bodyGeo, bodyMat);
   body.position.y = h * 0.475;
   body.castShadow = true;
   body.receiveShadow = true;
   g.add(body);
+
   const dividerGeo = new THREE.BoxGeometry(w * 0.02, h * 0.9, d * 0.92);
   const divider = new THREE.Mesh(dividerGeo, bodyMat);
   divider.position.y = h * 0.475;
   g.add(divider);
+
   const handleGeo = new THREE.BoxGeometry(w * 0.03, h * 0.08, d * 0.04);
-  const handleMat = new THREE.MeshStandardMaterial({ color: 0xc9a96a, roughness: 0.3, metalness: 0.7 });
+  const handleMat = new THREE.MeshStandardMaterial({
+    color: handleColor,
+    roughness: 0.3,
+    metalness: 0.7,
+  });
   const h1 = new THREE.Mesh(handleGeo, handleMat);
   h1.position.set(-w * 0.2, h * 0.5, d * 0.42);
   g.add(h1);
   const h2 = new THREE.Mesh(handleGeo, handleMat);
   h2.position.set(w * 0.2, h * 0.5, d * 0.42);
   g.add(h2);
+
+  if (variant?.scale3D) {
+    g.scale.setScalar(variant.scale3D);
+  }
   return g;
 };
 
-const createBookshelfMesh = (w: number, d: number, h: number, color: number) => {
+const createBookshelfMesh = (w: number, d: number, h: number, color: number, variant?: FurnitureStyleVariant) => {
   const g = new THREE.Group();
+  const roughness = variant?.roughness ?? 0.7;
+  const metalness = variant?.metalness ?? 0.03;
+  const accentColor = variant?.accentColor3D;
+  const mainTexture = variant ? generateVariantTexture(variant) : null;
+
   const frameGeo = new THREE.BoxGeometry(w * 0.95, h * 0.95, d * 0.9);
-  const frameMat = new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.03 });
+  const frameMat = new THREE.MeshStandardMaterial({
+    color,
+    roughness,
+    metalness,
+    map: mainTexture ?? undefined,
+  });
   const frame = new THREE.Mesh(frameGeo, frameMat);
   frame.position.y = h * 0.475;
   frame.castShadow = true;
   frame.receiveShadow = true;
   g.add(frame);
-  const shelfColors = [0x8b4513, 0xa0522d, 0x654321, 0x8b5a2b, 0x5c3317];
+
+  const shelfColors = accentColor
+    ? [accentColor, hexToThreeColorLighten('#' + accentColor.toString(16).padStart(6, '0'), -0.2), hexToThreeColorLighten('#' + accentColor.toString(16).padStart(6, '0'), 0.2)]
+    : [0x8b4513, 0xa0522d, 0x654321, 0x8b5a2b, 0x5c3317];
   for (let i = 0; i < 4; i++) {
     const shelfGeo = new THREE.BoxGeometry(w * 0.04, h * 0.15, d * 0.8);
     const shelfMat = new THREE.MeshStandardMaterial({
@@ -308,17 +565,34 @@ const createBookshelfMesh = (w: number, d: number, h: number, color: number) => 
       g.add(book);
     }
   }
+
+  if (variant?.scale3D) {
+    g.scale.setScalar(variant.scale3D);
+  }
   return g;
 };
 
-const createFallbackMesh = (w: number, d: number, h: number, color: number) => {
+const createFallbackMesh = (w: number, d: number, h: number, color: number, variant?: FurnitureStyleVariant) => {
+  const roughness = variant?.roughness ?? 0.55;
+  const metalness = variant?.metalness ?? 0.08;
+  const mainTexture = variant ? generateVariantTexture(variant) : null;
+
   const geo = new THREE.BoxGeometry(w, h, d);
-  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.08 });
+  const mat = new THREE.MeshStandardMaterial({
+    color,
+    roughness,
+    metalness,
+    map: mainTexture ?? undefined,
+  });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   const g = new THREE.Group();
   g.add(mesh);
+
+  if (variant?.scale3D) {
+    g.scale.setScalar(variant.scale3D);
+  }
   return g;
 };
 
@@ -578,6 +852,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const selectCurtain = useDesignerStore((s) => s.selectCurtain);
   const selectWall = useDesignerStore((s) => s.selectWall);
   const getCatalogEntry = useDesignerStore((s) => s.getCatalogEntry);
+  const getVariant = useDesignerStore((s) => s.getVariant);
   const getRoomById = useDesignerStore((s) => s.getRoomById);
   const findFloorForRoomId = useDesignerStore((s) => s.findFloorForRoomId);
   const getAllFurnitureForFloor = useDesignerStore((s) => s.getAllFurnitureForFloor);
@@ -697,10 +972,11 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
       const group = furnitureGroupRef.current;
       if (!group) return;
       const catalog = getCatalogEntry(item.type);
+      const variant = getVariant(item.type, item.variantId);
       const w = item.width * SCALE;
       const d = item.height * SCALE;
       const h = catalog.depth * SCALE;
-      const itemColor = hexToThreeColor(item.color);
+      const itemColor = variant?.color3D ?? hexToThreeColor(item.color);
       const existingItem = furnitureMeshesRef.current.get(item.id);
       if (existingItem) {
         group.remove(existingItem);
@@ -729,7 +1005,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         group.add(furnitureGroup);
       };
       if (catalog.modelUrl && gltfLoaderRef.current) {
-        const fallback = createFallbackMesh(w, d, h, itemColor);
+        const fallback = createFallbackMesh(w, d, h, itemColor, variant);
         buildAndRegister(fallback);
         gltfLoaderRef.current.load(
           catalog.modelUrl,
@@ -778,35 +1054,35 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
       let furnitureGroup: THREE.Group;
       switch (item.type) {
         case 'bed':
-          furnitureGroup = createBedMesh(w, d, h, itemColor);
+          furnitureGroup = createBedMesh(w, d, h, itemColor, variant);
           break;
         case 'sofa':
-          furnitureGroup = createSofaMesh(w, d, h, itemColor);
+          furnitureGroup = createSofaMesh(w, d, h, itemColor, variant);
           break;
         case 'table':
-          furnitureGroup = createTableMesh(w, d, h, itemColor);
+          furnitureGroup = createTableMesh(w, d, h, itemColor, variant);
           break;
         case 'chair':
-          furnitureGroup = createChairMesh(w, d, h, itemColor);
+          furnitureGroup = createChairMesh(w, d, h, itemColor, variant);
           break;
         case 'plant':
-          furnitureGroup = createPlantMesh(w, d, h, itemColor);
+          furnitureGroup = createPlantMesh(w, d, h, itemColor, variant);
           break;
         case 'tvcabinet':
-          furnitureGroup = createTvCabinetMesh(w, d, h, itemColor);
+          furnitureGroup = createTvCabinetMesh(w, d, h, itemColor, variant);
           break;
         case 'wardrobe':
-          furnitureGroup = createWardrobeMesh(w, d, h, itemColor);
+          furnitureGroup = createWardrobeMesh(w, d, h, itemColor, variant);
           break;
         case 'bookshelf':
-          furnitureGroup = createBookshelfMesh(w, d, h, itemColor);
+          furnitureGroup = createBookshelfMesh(w, d, h, itemColor, variant);
           break;
         default:
-          furnitureGroup = createFallbackMesh(w, d, h, itemColor);
+          furnitureGroup = createFallbackMesh(w, d, h, itemColor, variant);
       }
       buildAndRegister(furnitureGroup);
     },
-    [getCatalogEntry, applyFurnitureMaterial]
+    [getCatalogEntry, getVariant, applyFurnitureMaterial]
   );
 
   const updateWindowMesh = useCallback(

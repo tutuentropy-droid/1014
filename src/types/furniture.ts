@@ -1,83 +1,69 @@
-export type DefaultFurnitureType =
-  | 'bed'
-  | 'sofa'
-  | 'table'
-  | 'chair'
-  | 'plant'
-  | 'tvcabinet'
-  | 'wardrobe'
-  | 'bookshelf';
-
+export type DefaultFurnitureType = 'bed' | 'sofa' | 'table' | 'plant' | 'tvcabinet' | 'wardrobe' | 'bookshelf' | 'chair';
 export type FurnitureType = DefaultFurnitureType | string;
 
-export type MaterialCategory = 'wood' | 'fabric' | 'metal' | 'stone' | 'wallpaper';
-
-export interface MaterialProsCons {
-  pros: string[];
-  cons: string[];
-}
-
-export interface MaterialKnowledge {
-  id: string;
-  category: MaterialCategory;
-  name: string;
-  label: string;
-  description: string;
-  features: string[];
-  pros: string[];
-  cons: string[];
-  priceRange: string;
-  priceLevel: 1 | 2 | 3 | 4 | 5;
-  durability: 1 | 2 | 3 | 4 | 5;
-  maintenance: 1 | 2 | 3 | 4 | 5;
-  ecoFriendly?: boolean;
-  suitableFor: string[];
-  tips?: string[];
-  relatedMaterials?: string[];
-  color?: string;
-}
-
-export interface MaterialPreset {
-  id: string;
-  category: MaterialCategory;
-  label: string;
-  color: string;
-  roughness: number;
-  metalness: number;
-  pattern?:
-    | 'woodGrain'
-    | 'fabricWeave'
-    | 'metalBrushed'
-    | 'stoneTile'
-    | 'wallpaperFloral'
-    | 'wallpaperStripe'
-    | 'wallpaperDamask'
-    | 'wallpaperDot'
-    | 'wallpaperVine'
-    | 'checkerboard'
-    | 'ceramicTile'
-    | 'carpet'
-    | 'none';
-}
-
-export type FloorStyleId =
-  | 'lightWood'
-  | 'darkWood'
-  | 'whiteTile'
-  | 'grayCarpet'
+export type FurnitureIconStyle = 'default' | 'modern' | 'classic' | 'minimal' | 'vintage';
+export type FurniturePattern =
+  | 'solid'
+  | 'striped'
+  | 'checkered'
+  | 'gradient'
+  | 'woodGrain'
+  | 'fabricWeave'
+  | 'metalBrushed'
+  | 'leather'
+  | 'marble'
+  | 'stoneTile'
+  | 'wallpaperFloral'
+  | 'wallpaperStripe'
+  | 'wallpaperDamask'
+  | 'wallpaperDot'
+  | 'wallpaperVine'
+  | 'ceramicTile'
+  | 'carpet'
   | 'checkerboard'
-  | 'marbleTile'
-  | 'beigeCarpet';
+  | 'none';
+export type FurnitureTexture = 'woodGrain' | 'fabricWeave' | 'metalBrushed' | 'leather' | 'marble';
 
-export interface FloorStylePreset {
-  id: FloorStyleId;
+export interface StaircaseArea {
+  x: number;
+  y: number;
+  widthGrids: number;
+  heightGrids: number;
+}
+
+export interface FurnitureStyleVariant {
+  id: string;
   label: string;
   color: string;
-  secondaryColor?: string;
-  roughness: number;
-  metalness: number;
-  pattern: 'woodGrain' | 'ceramicTile' | 'carpet' | 'checkerboard' | 'stoneTile';
-  repeat?: number;
+  color3D: number;
+  accentColor?: string;
+  accentColor3D?: number;
+  width?: number;
+  height?: number;
+  depth?: number;
+  iconStyle?: FurnitureIconStyle;
+  pattern?: FurniturePattern;
+  texture?: FurnitureTexture;
+  roughness?: number;
+  metalness?: number;
+  scale3D?: number;
+}
+
+export interface FurnitureCatalogEntry {
+  label: string;
+  width: number;
+  height: number;
+  color: string;
+  color3D: number;
+  depth: number;
+  variants?: FurnitureStyleVariant[];
+  defaultVariantId?: string;
+}
+
+export interface CustomFurnitureCatalogEntry extends FurnitureCatalogEntry {
+  iconUrl?: string;
+  modelUrl?: string;
+  isCustom?: boolean;
 }
 
 export interface FurnitureItem {
@@ -89,19 +75,9 @@ export interface FurnitureItem {
   height: number;
   color: string;
   label: string;
-  roomId: string;
+  variantId?: string;
+  roomId?: string;
   materialId?: string;
-}
-
-export interface WallMaterialOverride {
-  roomId: string;
-  orientation: WallOrientation;
-  materialId: string;
-}
-
-export interface SelectedWall {
-  roomId: string;
-  orientation: WallOrientation;
 }
 
 export interface WallItem {
@@ -110,34 +86,20 @@ export interface WallItem {
   y: number;
   width: number;
   height: number;
+  roomId?: string;
 }
 
-export interface CustomFurnitureCatalogEntry {
-  label: string;
-  width: number;
-  height: number;
-  color: string;
-  color3D: number;
-  depth: number;
-  iconUrl?: string;
-  modelUrl?: string;
-  isCustom?: boolean;
-}
-
-export type ViewMode = '2d' | '3d';
-export type DrawMode = 'none' | 'wall' | 'room' | 'window' | 'curtain';
-
-export type WallOrientation = 'top' | 'bottom' | 'left' | 'right';
+export type WindowOrientation = 'left' | 'right' | 'top' | 'bottom';
 
 export interface WindowItem {
   id: string;
+  wallId: string;
   roomId: string;
   x: number;
   y: number;
   width: number;
   height: number;
-  wallOrientation: WallOrientation;
-  wallOffset: number;
+  wallOrientation: WindowOrientation;
   windowWidth: number;
   windowHeight: number;
 }
@@ -149,6 +111,94 @@ export interface CurtainItem {
   isOpen: boolean;
 }
 
+export type WallOrientation = 'horizontal' | 'vertical' | 'left' | 'right' | 'top' | 'bottom';
+
+export interface Floor {
+  id: string;
+  level: number;
+  name: string;
+  rooms: Room[];
+  staircaseArea?: StaircaseArea;
+}
+
+export interface FurniturePositionSnapshot {
+  id: string;
+  x: number;
+  y: number;
+}
+
+export interface MaterialPreset {
+  id: string;
+  name?: string;
+  label: string;
+  category: MaterialCategory;
+  color?: string;
+  color3D?: number;
+  roughness?: number;
+  metalness?: number;
+  texture?: FurnitureTexture;
+  pattern?: FurniturePattern;
+}
+
+export interface SelectedWall {
+  roomId: string;
+  orientation: 'left' | 'right' | 'top' | 'bottom';
+}
+
+export interface MaterialKnowledge {
+  id: string;
+  category: MaterialCategory;
+  name: string;
+  label: string;
+  color?: string;
+  description: string;
+  features: string[];
+  pros: string[];
+  cons: string[];
+  suitableFor: string[];
+  tips?: string[];
+  maintenanceTips?: string[];
+  priceRange: string;
+  priceLevel: 1 | 2 | 3 | 4 | 5;
+  durability: 1 | 2 | 3 | 4 | 5;
+  maintenance: 1 | 2 | 3 | 4 | 5;
+  ecoFriendly: boolean;
+  relatedMaterials: string[];
+}
+
+export type MaterialCategory = 'wood' | 'fabric' | 'metal' | 'leather' | 'stone' | 'marble' | 'wallpaper';
+
+export interface FloorStylePreset {
+  id: FloorStyleId;
+  label: string;
+  color: string;
+  secondaryColor: string;
+  roughness: number;
+  metalness: number;
+  pattern: 'wood' | 'tile' | 'marble' | 'concrete' | 'carpet' | 'woodGrain' | 'ceramicTile' | 'checkerboard' | 'stoneTile';
+  repeat?: number;
+  description?: string;
+}
+
+export type FloorStyleId =
+  | 'lightWood'
+  | 'darkWood'
+  | 'grayWood'
+  | 'whiteMarble'
+  | 'grayMarble'
+  | 'beigeTile'
+  | 'grayTile'
+  | 'concrete'
+  | 'creamCarpet'
+  | 'grayCarpet'
+  | 'whiteTile'
+  | 'checkerboard'
+  | 'marbleTile'
+  | 'beigeCarpet';
+
+export type ViewMode = '2d' | '3d';
+export type DrawMode = 'none' | 'wall' | 'window' | 'curtain';
+
 export interface Room {
   id: string;
   name: string;
@@ -156,32 +206,12 @@ export interface Room {
   y: number;
   widthGrids: number;
   heightGrids: number;
-  color: string;
   furniture: FurnitureItem[];
-  windows: WindowItem[];
-  curtains: CurtainItem[];
+  walls: WallItem[];
+  windows?: WindowItem[];
+  curtains?: CurtainItem[];
   roomWidthGrids: number;
   roomHeightGrids: number;
-  wallMaterials?: Partial<Record<WallOrientation, string>>;
-}
-
-export interface StaircaseArea {
-  x: number;
-  y: number;
-  widthGrids: number;
-  heightGrids: number;
-}
-
-export interface Floor {
-  id: string;
-  level: number;
-  rooms: Room[];
-  staircaseArea: StaircaseArea | null;
-  floorStyleId?: FloorStyleId;
-}
-
-export interface FurniturePositionSnapshot {
-  id: string;
-  x: number;
-  y: number;
+  wallMaterials?: Partial<Record<WindowOrientation, string>>;
+  staircaseArea?: StaircaseArea;
 }
