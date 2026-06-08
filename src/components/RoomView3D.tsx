@@ -3,9 +3,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useDesignerStore } from '@/store/useDesignerStore';
-import type { FurnitureItem, Room, WindowItem, CurtainItem, Floor, StaircaseArea, WallOrientation, MaterialPreset } from '@/types/furniture';
+import type { FurnitureItem, Room, WindowItem, CurtainItem, Floor, StaircaseArea, WallOrientation, MaterialPreset, FloorStylePreset } from '@/types/furniture';
 import { GRID_SIZE, CANVAS_WIDTH_GRIDS, CANVAS_HEIGHT_GRIDS, FLOOR_HEIGHT, SLAB_THICKNESS } from '@/data/furnitureData';
-import { generateTextureCanvas, getMaterialById, DEFAULT_WALL_MATERIAL_ID } from '@/data/materialData';
+import { generateTextureCanvas, getMaterialById, DEFAULT_WALL_MATERIAL_ID, getFloorStyleById, generateFloorTextureCanvas } from '@/data/materialData';
 
 
 const SCALE = 0.01;
@@ -51,6 +51,36 @@ const getOrCreateTexture = (preset: MaterialPreset): THREE.Texture | null => {
     texture.anisotropy = 4;
     texture.needsUpdate = true;
     textureCache.set(cacheKey, texture);
+    return texture;
+  } catch {
+    return null;
+  }
+};
+
+const floorTextureCache = new Map<string, THREE.Texture>();
+
+const getOrCreateFloorTexture = (
+  preset: FloorStylePreset,
+  roomWidthMeters: number,
+  roomDepthMeters: number,
+): THREE.Texture | null => {
+  const repeatCount = preset.repeat ?? 8;
+  const cacheKey = `${preset.id}_${repeatCount}`;
+  if (floorTextureCache.has(cacheKey)) {
+    return floorTextureCache.get(cacheKey)!;
+  }
+  try {
+    const canvas = generateFloorTextureCanvas(preset, 256);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    const aspect = roomWidthMeters / Math.max(0.01, roomDepthMeters);
+    const repeatX = repeatCount;
+    const repeatY = Math.max(1, Math.round(repeatCount / aspect));
+    texture.repeat.set(repeatX, repeatY);
+    texture.anisotropy = 8;
+    texture.needsUpdate = true;
+    floorTextureCache.set(cacheKey, texture);
     return texture;
   } catch {
     return null;
@@ -542,6 +572,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
   const selectedCurtainId = useDesignerStore((s) => s.selectedCurtainId);
   const selectedWall = useDesignerStore((s) => s.selectedWall);
   const selectedRoomId = useDesignerStore((s) => s.selectedRoomId);
+  const floorStyleId = useDesignerStore((s) => s.floorStyleId);
   const selectFurniture = useDesignerStore((s) => s.selectFurniture);
   const selectWindow = useDesignerStore((s) => s.selectWindow);
   const selectCurtain = useDesignerStore((s) => s.selectCurtain);
@@ -844,6 +875,8 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
     const group = floorsGroupRef.current;
     if (!group) return;
     clearGroup(group);
+    const floorStyle = getFloorStyleById(floorStyleId);
+    const baseColor = hexToThreeColor(floorStyle.color);
     floors.forEach((floor: Floor) => {
       const baseY = floorYOffset(floor.level);
       floor.rooms.forEach((room: Room) => {
@@ -851,11 +884,12 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         const ry = room.y * GRID_SIZE * SCALE;
         const rw = room.widthGrids * GRID_SIZE * SCALE;
         const rh = room.heightGrids * GRID_SIZE * SCALE;
-        const floorColor = hexToThreeColorLighten(room.color, 0.15);
+        const floorTexture = getOrCreateFloorTexture(floorStyle, rw, rh);
         const floorMat = new THREE.MeshStandardMaterial({
-          color: floorColor,
-          roughness: 0.6,
-          metalness: 0.05,
+          color: baseColor,
+          roughness: floorStyle.roughness,
+          metalness: floorStyle.metalness,
+          map: floorTexture ?? undefined,
         });
         const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(rw, rh), floorMat);
         floorMesh.rotation.x = -Math.PI / 2;
@@ -865,7 +899,7 @@ export const RoomView3D = ({ onScreenshotReady }: RoomView3DProps) => {
         group.add(floorMesh);
       });
     });
-  }, [floors]);
+  }, [floors, floorStyleId]);
 
   const buildSlabs = useCallback(() => {
     const group = slabsGroupRef.current;

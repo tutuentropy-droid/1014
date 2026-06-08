@@ -13,6 +13,8 @@ import type {
   Floor,
   StaircaseArea,
   SelectedWall,
+  FloorStyleId,
+  FurniturePositionSnapshot,
 } from '@/types/furniture';
 import {
   FURNITURE_CATALOG,
@@ -28,6 +30,7 @@ import {
   MAX_FLOORS,
   FLOOR_HEIGHT,
 } from '@/data/furnitureData';
+import { DEFAULT_FLOOR_STYLE_ID } from '@/data/materialData';
 import { canPlaceFurnitureInRoom, canPlaceRoom, generateWallsForRooms, type GeneratedWall } from '@/utils/collision';
 import { generateSmartLayout } from '@/utils/smartLayout';
 
@@ -38,6 +41,7 @@ interface PersistedState {
   customCatalog: Record<string, CustomFurnitureCatalogEntry>;
   viewMode: ViewMode;
   seeThroughMode: boolean;
+  floorStyleId: FloorStyleId;
 }
 
 interface DesignState {
@@ -57,6 +61,8 @@ interface DesignState {
   customCatalog: Record<string, CustomFurnitureCatalogEntry>;
   roomWidthGrids: number;
   roomHeightGrids: number;
+  floorStyleId: FloorStyleId;
+  furniturePositionSnapshot: FurniturePositionSnapshot[] | null;
 
   getCurrentFloor: () => Floor | undefined;
   getFloorByLevel: (level: number) => Floor | undefined;
@@ -87,6 +93,9 @@ interface DesignState {
 
   setDrawMode: (mode: DrawMode) => void;
   setSeeThroughMode: (enabled: boolean) => void;
+  setFloorStyle: (styleId: FloorStyleId) => void;
+  storeFurniturePositions: () => void;
+  restoreFurniturePositions: () => number;
 
   addFurniture: (type: FurnitureType, x: number, y: number, roomId: string) => boolean;
   moveFurniture: (id: string, x: number, y: number) => boolean;
@@ -365,6 +374,8 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
   customCatalog: {},
   roomWidthGrids: DEFAULT_ROOM_WIDTH_GRIDS,
   roomHeightGrids: DEFAULT_ROOM_HEIGHT_GRIDS,
+  floorStyleId: DEFAULT_FLOOR_STYLE_ID,
+  furniturePositionSnapshot: null,
 
   getCurrentFloor: () => {
     const { floors, currentFloor } = get();
@@ -492,6 +503,41 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
 
   setDrawMode: (mode: DrawMode) => set({ drawMode: mode }),
   setSeeThroughMode: (enabled: boolean) => set({ seeThroughMode: enabled }),
+  setFloorStyle: (styleId: FloorStyleId) => set({ floorStyleId: styleId }),
+
+  storeFurniturePositions: () => {
+    const allFurniture = collectAllFurniture(get().floors);
+    const snapshot: FurniturePositionSnapshot[] = allFurniture.map((f) => ({
+      id: f.id,
+      x: f.x,
+      y: f.y,
+    }));
+    set({ furniturePositionSnapshot: snapshot });
+  },
+
+  restoreFurniturePositions: () => {
+    const { furniturePositionSnapshot, floors } = get();
+    if (!furniturePositionSnapshot || furniturePositionSnapshot.length === 0) return 0;
+    const posMap = new Map(furniturePositionSnapshot.map((s) => [s.id, s]));
+    let restored = 0;
+    const newFloors = floors.map((floor) => ({
+      ...floor,
+      rooms: floor.rooms.map((room) => ({
+        ...room,
+        furniture: room.furniture.map((f) => {
+          const snap = posMap.get(f.id);
+          if (snap) {
+            restored++;
+            return { ...f, x: snap.x, y: snap.y };
+          }
+          return f;
+        }),
+      })),
+    }));
+    set({ floors: newFloors });
+    get().syncRoomFurniture();
+    return restored;
+  },
 
   syncRoomFurniture: () => {
     set({ furniture: collectAllFurniture(get().floors) });
@@ -1106,7 +1152,7 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
   },
 
   saveLayout: () => {
-    const { floors, currentFloor, currentRoomId, customCatalog, viewMode, seeThroughMode } = get();
+    const { floors, currentFloor, currentRoomId, customCatalog, viewMode, seeThroughMode, floorStyleId } = get();
     const state: PersistedState = {
       floors,
       currentFloor,
@@ -1114,6 +1160,7 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
       customCatalog,
       viewMode,
       seeThroughMode,
+      floorStyleId,
     };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -1169,8 +1216,10 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
           customCatalog: parsed.customCatalog ?? {},
           viewMode: parsed.viewMode ?? '2d',
           seeThroughMode: parsed.seeThroughMode ?? false,
+          floorStyleId: parsed.floorStyleId ?? DEFAULT_FLOOR_STYLE_ID,
           selectedId: null,
           drawMode: 'none',
+          furniturePositionSnapshot: null,
         });
       } else {
         const floors = getDefaultFloors();
@@ -1191,8 +1240,10 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
           customCatalog: {},
           viewMode: '2d',
           seeThroughMode: false,
+          floorStyleId: DEFAULT_FLOOR_STYLE_ID,
           selectedId: null,
           drawMode: 'none',
+          furniturePositionSnapshot: null,
         });
       }
     } catch (e) {
@@ -1215,8 +1266,10 @@ export const useDesignerStore = create<DesignState>((set, get) => ({
         customCatalog: {},
         viewMode: '2d',
         seeThroughMode: false,
+        floorStyleId: DEFAULT_FLOOR_STYLE_ID,
         selectedId: null,
         drawMode: 'none',
+        furniturePositionSnapshot: null,
       });
     }
   },

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   LayoutGrid,
   Box,
@@ -18,6 +18,11 @@ import {
   Eye,
   EyeOff,
   BookOpen,
+  ChevronDown,
+  Check,
+  Layers,
+  RotateCcw,
+  MapPin,
 } from 'lucide-react';
 import { FurniturePalette } from '@/components/FurniturePalette';
 import { MaterialPanel } from '@/components/MaterialPanel';
@@ -26,13 +31,14 @@ import { RoomView2D } from '@/components/RoomView2D';
 import { RoomView3D } from '@/components/RoomView3D';
 import { RoomTabs } from '@/components/RoomTabs';
 import { useDesignerStore } from '@/store/useDesignerStore';
-import type { FurnitureType } from '@/types/furniture';
+import type { FurnitureType, FloorStyleId } from '@/types/furniture';
 import {
   GRID_SIZE,
   MIN_FURNITURE_GRIDS,
   MAX_FURNITURE_GRIDS,
   MAX_FLOORS,
 } from '@/data/furnitureData';
+import { FLOOR_STYLE_PRESETS, getFloorStyleById, generateFloorTextureCanvas } from '@/data/materialData';
 
 export default function Home() {
   const {
@@ -73,6 +79,11 @@ export default function Home() {
     updateFurnitureLabel,
     clearRoomFurniture,
     applySmartLayout,
+    floorStyleId,
+    setFloorStyle,
+    storeFurniturePositions,
+    restoreFurniturePositions,
+    furniturePositionSnapshot,
   } = useDesignerStore();
 
   const currentFloorData = floors.find((f) => f.level === currentFloor);
@@ -86,6 +97,11 @@ export default function Home() {
   const [paletteDrag, setPaletteDrag] = useState<FurnitureType | null>(null);
   const [showSmartLayoutDialog, setShowSmartLayoutDialog] = useState(false);
   const [showMaterialKnowledge, setShowMaterialKnowledge] = useState(false);
+  const [showFloorStyleDropdown, setShowFloorStyleDropdown] = useState(false);
+  const floorStyleDropdownRef = useRef<HTMLDivElement>(null);
+
+  const currentFloorStyle = getFloorStyleById(floorStyleId);
+  const hasSavedPositions = furniturePositionSnapshot && furniturePositionSnapshot.length > 0;
 
   const allFurniture = getAllFurniture();
   const allWindows = getAllWindows();
@@ -98,6 +114,56 @@ export default function Home() {
   useEffect(() => {
     loadLayout();
   }, [loadLayout]);
+
+  useEffect(() => {
+    if (floors.length > 0 && !hasSavedPositions && allFurniture.length > 0) {
+      storeFurniturePositions();
+    }
+  }, [floors.length]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        floorStyleDropdownRef.current &&
+        !floorStyleDropdownRef.current.contains(e.target as Node)
+      ) {
+        setShowFloorStyleDropdown(false);
+      }
+    };
+    if (showFloorStyleDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showFloorStyleDropdown]);
+
+  const handleFloorStyleChange = (id: FloorStyleId) => {
+    setFloorStyle(id);
+    setShowFloorStyleDropdown(false);
+    const style = FLOOR_STYLE_PRESETS.find((s) => s.id === id);
+    if (style) {
+      showToast(`地板风格已切换为「${style.label}」`);
+    }
+  };
+
+  const handleSavePositions = () => {
+    storeFurniturePositions();
+    showToast(`✓ 已保存当前所有家具位置（${allFurniture.length} 件）`);
+  };
+
+  const handleRestorePositions = () => {
+    if (!hasSavedPositions) {
+      showToast('还没有保存的家具位置');
+      return;
+    }
+    const count = restoreFurniturePositions();
+    if (count === 0) {
+      showToast('没有可还原的家具位置');
+    } else {
+      showToast(`✓ 已还原 ${count} 件家具的位置`);
+    }
+  };
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -248,6 +314,52 @@ export default function Home() {
                 3D 视图
               </button>
             </div>
+
+            <div className="relative" ref={floorStyleDropdownRef}>
+              <button
+                onClick={() => setShowFloorStyleDropdown(!showFloorStyleDropdown)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-white rounded-xl shadow-sm border border-stone-200 text-sm font-medium text-stone-700 hover:bg-stone-50 transition-all duration-200"
+              >
+                <Layers className="w-4 h-4" />
+                地板风格
+                <span
+                  className="w-5 h-5 rounded border border-stone-300 shadow-inner"
+                  style={{ backgroundColor: currentFloorStyle.color }}
+                />
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showFloorStyleDropdown ? 'rotate-180' : ''}`} />
+              </button>
+              {showFloorStyleDropdown && (
+                <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-stone-200 z-50 overflow-hidden animate-[fadeIn_.15s_ease-out]">
+                  <div className="p-2">
+                    {FLOOR_STYLE_PRESETS.map((preset) => {
+                      const isSelected = floorStyleId === preset.id;
+                      const previewCanvas = generateFloorTextureCanvas(preset, 32);
+                      const previewUrl = previewCanvas.toDataURL('image/png');
+                      return (
+                        <button
+                          key={preset.id}
+                          onClick={() => handleFloorStyleChange(preset.id)}
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                            isSelected
+                              ? 'bg-amber-50 text-amber-800'
+                              : 'text-stone-700 hover:bg-stone-50'
+                          }`}
+                        >
+                          <img
+                            src={previewUrl}
+                            alt={preset.label}
+                            className="w-8 h-8 rounded border border-stone-200 object-cover shadow-sm"
+                          />
+                          <span className="flex-1 text-left">{preset.label}</span>
+                          {isSelected && <Check className="w-4 h-4 text-amber-600" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {viewMode === '2d' && (
               <div className="flex items-center gap-2 p-1 bg-white rounded-xl shadow-sm border border-stone-200">
                 <button
@@ -384,6 +496,25 @@ export default function Home() {
               >
                 <Camera className="w-4 h-4" />
                 导出 3D 截图
+              </button>
+              <button
+                onClick={handleSavePositions}
+                className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-teal-500/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+              >
+                <MapPin className="w-4 h-4" />
+                保存家具位置
+              </button>
+              <button
+                onClick={handleRestorePositions}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl ${
+                  hasSavedPositions
+                    ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white shadow-orange-500/20'
+                    : 'bg-stone-200 text-stone-400 cursor-not-allowed shadow-none hover:translate-y-0'
+                }`}
+                disabled={!hasSavedPositions}
+              >
+                <RotateCcw className="w-4 h-4" />
+                还原家具位置
               </button>
               <button
                 onClick={handleClear}

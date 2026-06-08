@@ -4,6 +4,7 @@ import { useDesignerStore } from '@/store/useDesignerStore';
 import { GRID_SIZE, CANVAS_WIDTH_GRIDS, CANVAS_HEIGHT_GRIDS } from '@/data/furnitureData';
 import type { FurnitureItem, FurnitureType, Room, WindowItem, CurtainItem, StaircaseArea } from '@/types/furniture';
 import { canPlaceFurnitureInRoom, generateWallsForRooms, canPlaceRoom, snapWindowToWall, findWallAtPoint } from '@/utils/collision';
+import { getFloorStyleById, generateFloorTextureCanvas } from '@/data/materialData';
 
 type RoomResizeHandle = 'nw' | 'ne' | 'sw' | 'se';
 
@@ -76,7 +77,12 @@ export const RoomView2D = () => {
     selectCurtain,
     getStaircaseArea,
     setStaircaseArea,
+    floorStyleId,
   } = useDesignerStore();
+
+  const currentFloorStyle = getFloorStyleById(floorStyleId);
+  const floorTextureDataUrl = generateFloorTextureCanvas(currentFloorStyle, 128).toDataURL('image/png');
+  const floorBgImage = `url("${floorTextureDataUrl}")`;
 
   const currentFloorData = floors.find((f) => f.level === currentFloor);
   const rooms = currentFloorData?.rooms ?? [];
@@ -661,7 +667,10 @@ export const RoomView2D = () => {
         <div
           className="absolute inset-0 rounded-lg"
           style={{
-            background: 'radial-gradient(ellipse at 30% 20%, #faf6f0 0%, #ede4d3 100%)',
+            backgroundColor: currentFloorStyle.color,
+            backgroundImage: floorBgImage,
+            backgroundRepeat: 'repeat',
+            backgroundSize: `${128 * (currentFloorStyle.repeat ? 1 : 1)}px`,
             border: '2px solid #c9b897',
             boxShadow: 'inset 0 0 60px rgba(139, 115, 85, 0.1)',
           }}

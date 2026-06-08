@@ -1,4 +1,4 @@
-import type { MaterialPreset, MaterialCategory } from '@/types/furniture';
+import type { MaterialPreset, MaterialCategory, FloorStylePreset, FloorStyleId } from '@/types/furniture';
 
 export const MATERIAL_CATEGORIES: { key: MaterialCategory; label: string; icon: string }[] = [
   { key: 'wood', label: '木材', icon: '🪵' },
@@ -365,6 +365,254 @@ export const generateTextureCanvas = (preset: MaterialPreset, size: number = 256
 export const getMaterialPreviewDataUrl = (preset: MaterialPreset, size: number = 64): string => {
   try {
     const canvas = generateTextureCanvas(preset, size);
+    return canvas.toDataURL('image/png');
+  } catch {
+    return '';
+  }
+};
+
+export const FLOOR_STYLE_PRESETS: FloorStylePreset[] = [
+  {
+    id: 'lightWood',
+    label: '浅色木纹',
+    color: '#e8d4b8',
+    secondaryColor: '#c9a87c',
+    roughness: 0.7,
+    metalness: 0.02,
+    pattern: 'woodGrain',
+    repeat: 6,
+  },
+  {
+    id: 'darkWood',
+    label: '深色木纹',
+    color: '#5c4033',
+    secondaryColor: '#3e2a1f',
+    roughness: 0.75,
+    metalness: 0.03,
+    pattern: 'woodGrain',
+    repeat: 6,
+  },
+  {
+    id: 'whiteTile',
+    label: '白色瓷砖',
+    color: '#f5f5f5',
+    secondaryColor: '#e0e0e0',
+    roughness: 0.35,
+    metalness: 0.02,
+    pattern: 'ceramicTile',
+    repeat: 10,
+  },
+  {
+    id: 'grayCarpet',
+    label: '灰色地毯',
+    color: '#9a9a9a',
+    secondaryColor: '#7a7a7a',
+    roughness: 0.98,
+    metalness: 0.0,
+    pattern: 'carpet',
+    repeat: 20,
+  },
+  {
+    id: 'checkerboard',
+    label: '棋盘格',
+    color: '#fafafa',
+    secondaryColor: '#2a2a2a',
+    roughness: 0.4,
+    metalness: 0.02,
+    pattern: 'checkerboard',
+    repeat: 16,
+  },
+  {
+    id: 'marbleTile',
+    label: '大理石',
+    color: '#f0ead6',
+    secondaryColor: '#d4cfc0',
+    roughness: 0.25,
+    metalness: 0.03,
+    pattern: 'stoneTile',
+    repeat: 8,
+  },
+  {
+    id: 'beigeCarpet',
+    label: '米色地毯',
+    color: '#d9c9a8',
+    secondaryColor: '#b8a57f',
+    roughness: 0.98,
+    metalness: 0.0,
+    pattern: 'carpet',
+    repeat: 20,
+  },
+];
+
+export const DEFAULT_FLOOR_STYLE_ID: FloorStyleId = 'lightWood';
+
+export const getFloorStyleById = (id: FloorStyleId | undefined): FloorStylePreset => {
+  if (!id) return FLOOR_STYLE_PRESETS[0];
+  return FLOOR_STYLE_PRESETS.find((s) => s.id === id) ?? FLOOR_STYLE_PRESETS[0];
+};
+
+const generateCheckerboard = (
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  baseColor: string,
+  secondaryColor: string
+) => {
+  const tileSize = w / 8;
+  for (let y = 0; y < h; y += tileSize) {
+    for (let x = 0; x < w; x += tileSize) {
+      const isDark = ((x / tileSize) + (y / tileSize)) % 2 === 0;
+      ctx.fillStyle = isDark ? secondaryColor : baseColor;
+      ctx.fillRect(x, y, tileSize, tileSize);
+    }
+  }
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= w; x += tileSize) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= h; y += tileSize) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+};
+
+const generateCeramicTile = (
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  baseColor: string,
+  secondaryColor: string
+) => {
+  const { r, g, b } = hexToRgb(baseColor);
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 300; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const size = 0.3 + Math.random() * 1.5;
+    const darkness = 0.02 + Math.random() * 0.08;
+    const light = Math.random() > 0.5;
+    const adjust = (v: number) =>
+      light
+        ? Math.max(0, Math.min(255, v + Math.round(255 * darkness)))
+        : Math.max(0, Math.min(255, v - Math.round(255 * darkness)));
+    ctx.fillStyle = `rgba(${adjust(r)},${adjust(g)},${adjust(b)},0.6)`;
+    ctx.fillRect(x, y, size, size);
+  }
+  const groutColor = secondaryColor;
+  ctx.strokeStyle = groutColor;
+  ctx.lineWidth = 2;
+  const tileSize = w / 4;
+  for (let x = 0; x <= w; x += tileSize) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= h; y += tileSize) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 0.5;
+  for (let x = tileSize / 2; x < w; x += tileSize) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+  for (let y = tileSize / 2; y < h; y += tileSize) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+};
+
+const generateCarpet = (
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  baseColor: string,
+  secondaryColor: string
+) => {
+  const { r, g, b } = hexToRgb(baseColor);
+  const { r: sr, g: sg, b: sb } = hexToRgb(secondaryColor);
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 4000; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const useSecondary = Math.random() > 0.6;
+    const pr = useSecondary ? sr : r;
+    const pg = useSecondary ? sg : g;
+    const pb = useSecondary ? sb : b;
+    const darkness = -0.15 + Math.random() * 0.3;
+    const adjust = (v: number) => Math.max(0, Math.min(255, v + Math.round(255 * darkness)));
+    ctx.fillStyle = `rgba(${adjust(pr)},${adjust(pg)},${adjust(pb)},0.5)`;
+    ctx.fillRect(x, y, 0.8 + Math.random() * 0.8, 0.8 + Math.random() * 0.8);
+  }
+  for (let i = 0; i < 200; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const darkness = 0.1 + Math.random() * 0.2;
+    const adjust = (v: number) => Math.max(0, Math.min(255, v - Math.round(255 * darkness)));
+    ctx.strokeStyle = `rgba(${adjust(r)},${adjust(g)},${adjust(b)},0.25)`;
+    ctx.lineWidth = 0.3 + Math.random() * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (Math.random() - 0.5) * 6, y + (Math.random() - 0.5) * 6);
+    ctx.stroke();
+  }
+};
+
+const floorTextureCache = new Map<string, HTMLCanvasElement>();
+
+export const generateFloorTextureCanvas = (preset: FloorStylePreset, size: number = 512): HTMLCanvasElement => {
+  const cacheKey = `${preset.id}-${size}`;
+  if (floorTextureCache.has(cacheKey)) {
+    return floorTextureCache.get(cacheKey)!;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const secondary = preset.secondaryColor ?? preset.color;
+  switch (preset.pattern) {
+    case 'woodGrain':
+      generateWoodGrain(ctx, size, size, preset.color);
+      break;
+    case 'ceramicTile':
+      generateCeramicTile(ctx, size, size, preset.color, secondary);
+      break;
+    case 'carpet':
+      generateCarpet(ctx, size, size, preset.color, secondary);
+      break;
+    case 'checkerboard':
+      generateCheckerboard(ctx, size, size, preset.color, secondary);
+      break;
+    case 'stoneTile':
+      generateStoneTile(ctx, size, size, preset.color);
+      break;
+    default:
+      ctx.fillStyle = preset.color;
+      ctx.fillRect(0, 0, size, size);
+  }
+  floorTextureCache.set(cacheKey, canvas);
+  return canvas;
+};
+
+export const getFloorStylePreviewDataUrl = (preset: FloorStylePreset, size: number = 64): string => {
+  try {
+    const canvas = generateFloorTextureCanvas(preset, size);
     return canvas.toDataURL('image/png');
   } catch {
     return '';

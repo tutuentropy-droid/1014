@@ -54,7 +54,30 @@ export interface MaterialPreset {
     | 'wallpaperDamask'
     | 'wallpaperDot'
     | 'wallpaperVine'
+    | 'checkerboard'
+    | 'ceramicTile'
+    | 'carpet'
     | 'none';
+}
+
+export type FloorStyleId =
+  | 'lightWood'
+  | 'darkWood'
+  | 'whiteTile'
+  | 'grayCarpet'
+  | 'checkerboard'
+  | 'marbleTile'
+  | 'beigeCarpet';
+
+export interface FloorStylePreset {
+  id: FloorStyleId;
+  label: string;
+  color: string;
+  secondaryColor?: string;
+  roughness: number;
+  metalness: number;
+  pattern: 'woodGrain' | 'ceramicTile' | 'carpet' | 'checkerboard' | 'stoneTile';
+  repeat?: number;
 }
 
 export interface FurnitureItem {
@@ -154,4 +177,11 @@ export interface Floor {
   level: number;
   rooms: Room[];
   staircaseArea: StaircaseArea | null;
+  floorStyleId?: FloorStyleId;
+}
+
+export interface FurniturePositionSnapshot {
+  id: string;
+  x: number;
+  y: number;
 }
