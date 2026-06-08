@@ -17,9 +17,11 @@ import {
   Building2,
   Eye,
   EyeOff,
+  BookOpen,
 } from 'lucide-react';
 import { FurniturePalette } from '@/components/FurniturePalette';
 import { MaterialPanel } from '@/components/MaterialPanel';
+import { MaterialKnowledge } from '@/components/MaterialKnowledge';
 import { RoomView2D } from '@/components/RoomView2D';
 import { RoomView3D } from '@/components/RoomView3D';
 import { RoomTabs } from '@/components/RoomTabs';
@@ -83,6 +85,7 @@ export default function Home() {
   const [toast, setToast] = useState<string | null>(null);
   const [paletteDrag, setPaletteDrag] = useState<FurnitureType | null>(null);
   const [showSmartLayoutDialog, setShowSmartLayoutDialog] = useState(false);
+  const [showMaterialKnowledge, setShowMaterialKnowledge] = useState(false);
 
   const allFurniture = getAllFurniture();
   const allWindows = getAllWindows();
@@ -351,6 +354,17 @@ export default function Home() {
                 智能布局
               </button>
               <button
+                onClick={() => setShowMaterialKnowledge(!showMaterialKnowledge)}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl ${
+                  showMaterialKnowledge
+                    ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-violet-500/25'
+                    : 'bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-400 hover:to-purple-500 text-white shadow-violet-500/20'
+                }`}
+              >
+                <BookOpen className="w-4 h-4" />
+                材质知识
+              </button>
+              <button
                 onClick={handleSave}
                 className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-stone-800 to-stone-700 hover:from-stone-700 hover:to-stone-600 text-white rounded-xl font-medium shadow-lg shadow-stone-700/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
               >
@@ -395,8 +409,11 @@ export default function Home() {
             </div>
           </main>
 
-          {(selectedFurniture || selectedWindow || selectedCurtain || selectedWall) && (
+          {(selectedFurniture || selectedWindow || selectedCurtain || selectedWall || showMaterialKnowledge) && (
             <aside className="w-[260px] flex-shrink-0 flex flex-col gap-4">
+              {showMaterialKnowledge && (
+                <MaterialKnowledge onClose={() => setShowMaterialKnowledge(false)} />
+              )}
               {selectedFurniture && (
                 <div className="flex flex-col gap-4 p-5 bg-white rounded-2xl shadow-[0_4px_24px_rgba(92,74,61,0.1)] border border-stone-100">
                   <div className="flex items-center justify-between pb-3 border-b border-stone-100">

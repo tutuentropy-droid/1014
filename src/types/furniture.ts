@@ -12,6 +12,31 @@ export type FurnitureType = DefaultFurnitureType | string;
 
 export type MaterialCategory = 'wood' | 'fabric' | 'metal' | 'stone' | 'wallpaper';
 
+export interface MaterialProsCons {
+  pros: string[];
+  cons: string[];
+}
+
+export interface MaterialKnowledge {
+  id: string;
+  category: MaterialCategory;
+  name: string;
+  label: string;
+  description: string;
+  features: string[];
+  pros: string[];
+  cons: string[];
+  priceRange: string;
+  priceLevel: 1 | 2 | 3 | 4 | 5;
+  durability: 1 | 2 | 3 | 4 | 5;
+  maintenance: 1 | 2 | 3 | 4 | 5;
+  ecoFriendly?: boolean;
+  suitableFor: string[];
+  tips?: string[];
+  relatedMaterials?: string[];
+  color?: string;
+}
+
 export interface MaterialPreset {
   id: string;
   category: MaterialCategory;
